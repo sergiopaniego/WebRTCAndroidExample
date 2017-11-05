@@ -51,11 +51,9 @@ public class MainActivity extends AppCompatActivity {
     private VideoRenderer remoteRenderer;
     private AudioTrack localAudioTrack;
     private VideoTrack localVideoTrack;
-    private VideoTrack remoteVideoTrack;
     private String socketAddress = "http://10.0.2.2:8080";
     private Socket socket;
     private Socket socket2;
-
 
     @BindView(R.id.start_call)
     Button start_call;
@@ -102,7 +100,6 @@ public class MainActivity extends AppCompatActivity {
     public void initViews() {
         localVideoView.setMirror(true);
         remoteVideoView.setMirror(false);
-
         EglBase rootEglBase = EglBase.create();
         localVideoView.init(rootEglBase.getEglBaseContext(), null);
         localVideoView.setZOrderMediaOverlay(true);
@@ -132,13 +129,25 @@ public class MainActivity extends AppCompatActivity {
         final VideoRenderer localRenderer = new VideoRenderer(localVideoView);
         localVideoTrack.addRenderer(localRenderer);
 
-        final List<PeerConnection.IceServer> iceServers = new ArrayList<>();
-        PeerConnection.IceServer iceServer = new PeerConnection.IceServer("stun:stun.l.google.com:19302");
-        iceServers.add(iceServer);
-
         MediaConstraints sdpConstraints = new MediaConstraints();
         sdpConstraints.mandatory.add(new MediaConstraints.KeyValuePair("offerToReceiveAudio", "true"));
         sdpConstraints.mandatory.add(new MediaConstraints.KeyValuePair("offerToReceiveVideo", "true"));
+
+        createLocalPeerConnection(sdpConstraints);
+        createLocalSocket();
+
+        MediaStream stream = peerConnectionFactory.createLocalMediaStream("102");
+        stream.addTrack(localAudioTrack);
+        stream.addTrack(localVideoTrack);
+        localPeer.addStream(stream);
+
+        createLocalOffer(sdpConstraints);
+    }
+
+    public void createLocalPeerConnection(MediaConstraints sdpConstraints) {
+        final List<PeerConnection.IceServer> iceServers = new ArrayList<>();
+        PeerConnection.IceServer iceServer = new PeerConnection.IceServer("stun:stun.l.google.com:19302");
+        iceServers.add(iceServer);
 
         localPeer = peerConnectionFactory.createPeerConnection(iceServers, sdpConstraints, new CustomPeerConnectionObserver("localPeerCreation") {
             @Override
@@ -156,13 +165,15 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         });
+    }
 
+    public void createLocalSocket() {
         try {
             socket = IO.socket(socketAddress);
             socket.on("message", new Emitter.Listener() {
                 @Override
                 public void call(Object... args) {
-                    SessionDescription sessionDescription = null;
+                    SessionDescription sessionDescription;
                     try {
                         JSONObject jsonObject = new JSONObject(args[0].toString());
                         if (jsonObject.getString("type").equals("candidate")) {
@@ -203,12 +214,9 @@ public class MainActivity extends AppCompatActivity {
         } catch (URISyntaxException e) {
             e.printStackTrace();
         }
+    }
 
-        MediaStream stream = peerConnectionFactory.createLocalMediaStream("102");
-        stream.addTrack(localAudioTrack);
-        stream.addTrack(localVideoTrack);
-        localPeer.addStream(stream);
-
+    public void createLocalOffer(MediaConstraints sdpConstraints) {
         localPeer.createOffer(new CustomSdpObserver("localCreateOffer") {
             @Override
             public void onCreateSuccess(SessionDescription sessionDescription) {
@@ -230,6 +238,12 @@ public class MainActivity extends AppCompatActivity {
         start_call.setEnabled(false);
         init_call.setEnabled(false);
         end_call.setEnabled(true);
+
+        createRemotePeerConnection();
+        createRemoteSocket();
+    }
+
+    public void createRemotePeerConnection() {
         final List<PeerConnection.IceServer> iceServers = new ArrayList<>();
         PeerConnection.IceServer iceServer = new PeerConnection.IceServer("stun:stun.l.google.com:19302");
         iceServers.add(iceServer);
@@ -266,37 +280,20 @@ public class MainActivity extends AppCompatActivity {
 
             }
         });
+    }
 
+    public void createRemoteSocket() {
         try {
             socket2 = IO.socket(socketAddress);
             socket2.on("message", new Emitter.Listener() {
                 @Override
                 public void call(Object... args) {
-                    SessionDescription sessionDescription = null;
                     try {
                         JSONObject jsonObject = new JSONObject(args[0].toString());
                         if (jsonObject.getString("type").equals("candidate")) {
-                            IceCandidate iceCandidate = new IceCandidate(jsonObject.getString("id"),Integer.parseInt(jsonObject.getString("label")),jsonObject.getString("candidate"));
-                            remotePeer.addIceCandidate(iceCandidate);
+                            saveIceCandidate(jsonObject);
                         } else {
-                            sessionDescription = new SessionDescription(SessionDescription.Type.OFFER, jsonObject.getString("sdp"));
-                            remotePeer.setRemoteDescription(new CustomSdpObserver("remoteSetRemoteDesc"), sessionDescription);
-
-                            remotePeer.createAnswer(new CustomSdpObserver("remoteCreateOffer") {
-                                @Override
-                                public void onCreateSuccess(SessionDescription sessionDescription) {
-                                    super.onCreateSuccess(sessionDescription);
-                                    remotePeer.setLocalDescription(new CustomSdpObserver("remoteSetLocalDesc"), sessionDescription);
-                                    try {
-                                        JSONObject json = new JSONObject();
-                                        json.put("type", sessionDescription.type);
-                                        json.put("sdp", sessionDescription.description);
-                                        socket2.emit("message", json.toString());
-                                    } catch (JSONException e) {
-                                        e.printStackTrace();
-                                    }
-                                }
-                            }, new MediaConstraints());
+                            saveOfferAndAnswer(jsonObject);
                         }
                     } catch (JSONException e) {
                         e.printStackTrace();
@@ -328,6 +325,32 @@ public class MainActivity extends AppCompatActivity {
         } catch (URISyntaxException e) {
             e.printStackTrace();
         }
+    }
+
+    public void saveOfferAndAnswer(JSONObject json) throws JSONException {
+        SessionDescription sessionDescription = new SessionDescription(SessionDescription.Type.OFFER, json.getString("sdp"));
+        remotePeer.setRemoteDescription(new CustomSdpObserver("remoteSetRemoteDesc"), sessionDescription);
+
+        remotePeer.createAnswer(new CustomSdpObserver("remoteCreateOffer") {
+            @Override
+            public void onCreateSuccess(SessionDescription sessionDescription) {
+                super.onCreateSuccess(sessionDescription);
+                remotePeer.setLocalDescription(new CustomSdpObserver("remoteSetLocalDesc"), sessionDescription);
+                try {
+                    JSONObject json = new JSONObject();
+                    json.put("type", sessionDescription.type);
+                    json.put("sdp", sessionDescription.description);
+                    socket2.emit("message", json.toString());
+                } catch (JSONException e) {
+                    e.printStackTrace();
+                }
+            }
+        }, new MediaConstraints());
+    }
+
+    public void saveIceCandidate(JSONObject json) throws JSONException {
+        IceCandidate iceCandidate = new IceCandidate(json.getString("id"),Integer.parseInt(json.getString("label")),json.getString("candidate"));
+        remotePeer.addIceCandidate(iceCandidate);
     }
 
     public void hangup(View view) {
