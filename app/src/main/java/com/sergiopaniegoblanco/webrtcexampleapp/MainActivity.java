@@ -30,15 +30,14 @@ import org.webrtc.VideoSource;
 import org.webrtc.VideoTrack;
 
 
-import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.List;
 
 import butterknife.BindView;
 import butterknife.ButterKnife;
-import io.socket.client.IO;
-import io.socket.emitter.Emitter;
-import io.socket.client.Socket;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.WebSocket;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -51,9 +50,13 @@ public class MainActivity extends AppCompatActivity {
     private VideoRenderer remoteRenderer;
     private AudioTrack localAudioTrack;
     private VideoTrack localVideoTrack;
-    private String socketAddress = "http://10.0.2.2:8080";
-    private Socket socket;
-    private Socket socket2;
+    private String socketAddress = "http://10.0.2.2:1337";
+    private String session = "/SessionA";
+    private String secret = "?secret=MY_SECRET";
+    private OkHttpClient webSocket1;
+    private WebSocket ws1;
+    private OkHttpClient webSocket2;
+    private WebSocket ws2;
 
     @BindView(R.id.start_call)
     Button start_call;
@@ -73,6 +76,10 @@ public class MainActivity extends AppCompatActivity {
         askForPermissions();
         ButterKnife.bind(this);
         initViews();
+    }
+
+    public void setRemoteDescription(SessionDescription sessionDescription) {
+        localPeer.setRemoteDescription(new CustomSdpObserver("localSetRemoteDesc"), sessionDescription);
     }
 
     public void askForPermissions() {
@@ -159,7 +166,7 @@ public class MainActivity extends AppCompatActivity {
                     json.put("label", iceCandidate.sdpMLineIndex);
                     json.put("id", iceCandidate.sdpMid);
                     json.put("candidate", iceCandidate.sdp);
-                    socket.emit("message", json.toString());
+                    ws1.send(json.toString());
                 } catch (JSONException e) {
                     e.printStackTrace();
                 }
@@ -168,52 +175,12 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void createLocalSocket() {
-        try {
-            socket = IO.socket(socketAddress);
-            socket.on("message", new Emitter.Listener() {
-                @Override
-                public void call(Object... args) {
-                    SessionDescription sessionDescription;
-                    try {
-                        JSONObject jsonObject = new JSONObject(args[0].toString());
-                        if (jsonObject.getString("type").equals("candidate")) {
-                            IceCandidate iceCandidate = new IceCandidate(jsonObject.getString("id"),Integer.parseInt(jsonObject.getString("label")),jsonObject.getString("candidate"));
-                            localPeer.addIceCandidate(iceCandidate);
-                        } else {
-                            sessionDescription = new SessionDescription(SessionDescription.Type.ANSWER, jsonObject.getString("sdp"));
-                            localPeer.setRemoteDescription(new CustomSdpObserver("localSetRemoteDesc"), sessionDescription);
-                        }
-                    } catch (JSONException e) {
-                        e.printStackTrace();
-                    }
-
-                }
-            }).on("log", new Emitter.Listener() {
-                @Override
-                public void call(Object... args) {
-                }
-            }).on("joined", new Emitter.Listener() {
-                @Override
-                public void call(Object... args) {
-                }
-            }).on("full", new Emitter.Listener() {
-                @Override
-                public void call(Object... args) {
-                }
-            }).on("created", new Emitter.Listener() {
-                @Override
-                public void call(Object... args) {
-                }
-            }).on("join", new Emitter.Listener() {
-                @Override
-                public void call(Object... args) {
-                }
-            });
-            socket.connect();
-            socket.emit("create or join", "foo");
-        } catch (URISyntaxException e) {
-            e.printStackTrace();
-        }
+        Request request = new Request.Builder().url(socketAddress).build();
+        CustomWebSocketListener listener = new CustomWebSocketListener(this, localPeer);
+        OkHttpClient.Builder okHttpClientBuilder = new OkHttpClient.Builder();
+        webSocket1 = okHttpClientBuilder.build();
+        ws1 = webSocket1.newWebSocket(request, listener);
+        webSocket1.dispatcher().executorService().shutdown();
     }
 
     public void createLocalOffer(MediaConstraints sdpConstraints) {
@@ -226,7 +193,7 @@ public class MainActivity extends AppCompatActivity {
                     JSONObject json = new JSONObject();
                     json.put("type", sessionDescription.type);
                     json.put("sdp", sessionDescription.description);
-                    socket.emit("message", json.toString());
+                    ws1.send(json.toString());
                 } catch (JSONException e) {
                     e.printStackTrace();
                 }
@@ -263,7 +230,7 @@ public class MainActivity extends AppCompatActivity {
                     json.put("label", iceCandidate.sdpMLineIndex);
                     json.put("id", iceCandidate.sdpMid);
                     json.put("candidate", iceCandidate.sdp);
-                    socket.emit("message", json.toString());
+                    ws2.send(json.toString());
                 } catch (JSONException e) {
                     e.printStackTrace();
                 }
@@ -283,81 +250,18 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void createRemoteSocket() {
-        try {
-            socket2 = IO.socket(socketAddress);
-            socket2.on("message", new Emitter.Listener() {
-                @Override
-                public void call(Object... args) {
-                    try {
-                        JSONObject jsonObject = new JSONObject(args[0].toString());
-                        if (jsonObject.getString("type").equals("candidate")) {
-                            saveIceCandidate(jsonObject);
-                        } else {
-                            saveOfferAndAnswer(jsonObject);
-                        }
-                    } catch (JSONException e) {
-                        e.printStackTrace();
-                    }
-                }
-            }).on("log", new Emitter.Listener() {
-                @Override
-                public void call(Object... args) {
-                }
-            }).on("joined", new Emitter.Listener() {
-                @Override
-                public void call(Object... args) {
-                }
-            }).on("full", new Emitter.Listener() {
-                @Override
-                public void call(Object... args) {
-                }
-            }).on("created", new Emitter.Listener() {
-                @Override
-                public void call(Object... args) {
-                }
-            }).on("join", new Emitter.Listener() {
-                @Override
-                public void call(Object... args) {
-                }
-            });
-            socket2.connect();
-            socket2.emit("create or join", "foo");
-        } catch (URISyntaxException e) {
-            e.printStackTrace();
-        }
-    }
-
-    public void saveOfferAndAnswer(JSONObject json) throws JSONException {
-        SessionDescription sessionDescription = new SessionDescription(SessionDescription.Type.OFFER, json.getString("sdp"));
-        remotePeer.setRemoteDescription(new CustomSdpObserver("remoteSetRemoteDesc"), sessionDescription);
-
-        remotePeer.createAnswer(new CustomSdpObserver("remoteCreateOffer") {
-            @Override
-            public void onCreateSuccess(SessionDescription sessionDescription) {
-                super.onCreateSuccess(sessionDescription);
-                remotePeer.setLocalDescription(new CustomSdpObserver("remoteSetLocalDesc"), sessionDescription);
-                try {
-                    JSONObject json = new JSONObject();
-                    json.put("type", sessionDescription.type);
-                    json.put("sdp", sessionDescription.description);
-                    socket2.emit("message", json.toString());
-                } catch (JSONException e) {
-                    e.printStackTrace();
-                }
-            }
-        }, new MediaConstraints());
-    }
-
-    public void saveIceCandidate(JSONObject json) throws JSONException {
-        IceCandidate iceCandidate = new IceCandidate(json.getString("id"),Integer.parseInt(json.getString("label")),json.getString("candidate"));
-        remotePeer.addIceCandidate(iceCandidate);
+        Request request = new Request.Builder().url(socketAddress).build();
+        CustomWebSocketListener listener = new CustomWebSocketListener(this, remotePeer);
+        OkHttpClient.Builder okHttpClientBuilder = new OkHttpClient.Builder();
+        webSocket2 = okHttpClientBuilder.build();
+        ws2 = webSocket2.newWebSocket(request, listener);
+        listener.setWebSocket(ws2);
+        webSocket2.dispatcher().executorService().shutdown();
     }
 
     public void hangup(View view) {
-        socket.emit("message", "bye");
-        socket.close();
-        socket2.emit("message", "bye");
-        socket2.close();
+        ws1.send("bye");
+        ws2.send("bye");
         localPeer.close();
         remotePeer.close();
         localPeer = null;
