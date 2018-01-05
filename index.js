@@ -2,6 +2,7 @@ var WebSocketServer = require('websocket').server;
 var http = require('http');
 
 var clients = [ ];
+var iceCandidates = [ ];
 var offer;
 
 var server = http.createServer(function(request, response) {
@@ -20,6 +21,9 @@ wsServer.on('request', function(request) {
   var connection = request.accept(null, request.origin);
   var index = clients.push(connection) - 1;
   console.log('Index: ' + index)
+  var iceCandidatesConnection = [ ];
+  iceCandidates.push(iceCandidatesConnection)
+  // Create iceCandidates array that should match the client it handles.
 
   // This is the most important callback for us, we'll handle
   // all messages from users here.
@@ -36,10 +40,10 @@ wsServer.on('request', function(request) {
         clients[0].send(JSON.stringify(message))
         console.log('ANSWER!')
     } else if (type != 'OFFER'){
-        for (var i=0; i<clients.length; i++) {
-            // console.log(clients[i])
-            clients[i].send(JSON.stringify(message));
-        }
+        iceCandidatesConnection.push(message);
+        /* for (var i=0; i<clients.length; i++) {
+           clients[i].send(JSON.stringify(message));
+        }*/
     }
     if ((type == 'OFFER') && (clients.length < 2)) {
         console.log("offer saved")
@@ -48,6 +52,14 @@ wsServer.on('request', function(request) {
     if (clients.length >= 2) {
         clients[1].send(JSON.stringify(offer))
         console.log('OFFER!')
+    }
+
+    for (var i=0; i<clients.length; i++) {
+        if (clients[i] != connection) {
+            for (var j=0; j<iceCandidatesConnection.length; j++) {
+                clients[i].send(JSON.stringify(iceCandidatesConnection[j]));
+            }
+        }
     }
   });
 

@@ -2,6 +2,7 @@ package com.sergiopaniegoblanco.webrtcexampleapp;
 
 import android.Manifest;
 import android.content.pm.PackageManager;
+import android.os.AsyncTask;
 import android.os.Bundle;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
@@ -10,18 +11,24 @@ import android.view.View;
 import android.widget.Button;
 
 
-import org.json.JSONException;
-import org.json.JSONObject;
+import com.neovisionaries.ws.client.OpeningHandshakeException;
+import com.neovisionaries.ws.client.StatusLine;
+import com.neovisionaries.ws.client.WebSocket;
+import com.neovisionaries.ws.client.WebSocketException;
+import com.neovisionaries.ws.client.WebSocketFactory;
+
 import org.webrtc.AudioSource;
 import org.webrtc.AudioTrack;
 import org.webrtc.Camera1Enumerator;
 import org.webrtc.CameraEnumerator;
+import org.webrtc.DataChannel;
 import org.webrtc.EglBase;
 import org.webrtc.IceCandidate;
 import org.webrtc.MediaConstraints;
 import org.webrtc.MediaStream;
 import org.webrtc.PeerConnection;
 import org.webrtc.PeerConnectionFactory;
+import org.webrtc.RtpReceiver;
 import org.webrtc.SessionDescription;
 import org.webrtc.SurfaceViewRenderer;
 import org.webrtc.VideoCapturer;
@@ -30,14 +37,25 @@ import org.webrtc.VideoSource;
 import org.webrtc.VideoTrack;
 
 
+import java.io.IOException;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.security.KeyManagementException;
+import java.security.NoSuchAlgorithmException;
+import java.security.cert.CertificateException;
+import java.security.cert.X509Certificate;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
 
 import butterknife.BindView;
 import butterknife.ButterKnife;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.WebSocket;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -50,13 +68,16 @@ public class MainActivity extends AppCompatActivity {
     private VideoRenderer remoteRenderer;
     private AudioTrack localAudioTrack;
     private VideoTrack localVideoTrack;
-    private String socketAddress = "http://10.0.2.2:1337";
+    // private String socketAddress = "wss://demos.openvidu.io:8443/";
+    private String socketAddress = "wss://demos.openvidu.io:8443/room";
+    // private String socketAddress = "https://16e595ce.ngrok.io";
+    // private String socketAddress = "http://10.0.2.2:1337/SessionA?secret=MY_SECRET";
     private String session = "/SessionA";
     private String secret = "?secret=MY_SECRET";
-    private OkHttpClient webSocket1;
-    private WebSocket ws1;
-    private OkHttpClient webSocket2;
-    private WebSocket ws2;
+    private WebSocket webSocket;
+    private CustomWebSocketAdapter webSocketAdapter;
+    private WebSocket webSocket2;
+    private CustomWebSocketAdapter2 webSocketAdapter2;
 
     @BindView(R.id.start_call)
     Button start_call;
@@ -78,9 +99,14 @@ public class MainActivity extends AppCompatActivity {
         initViews();
     }
 
-    public void setRemoteDescription(SessionDescription sessionDescription) {
-        localPeer.setRemoteDescription(new CustomSdpObserver("localSetRemoteDesc"), sessionDescription);
+    public PeerConnection getRemotePeer() {
+        return remotePeer;
     }
+
+    public void setRemotePeer(PeerConnection remotePeer) {
+        this.remotePeer = remotePeer;
+    }
+
 
     public void askForPermissions() {
         if ((ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
@@ -142,13 +168,6 @@ public class MainActivity extends AppCompatActivity {
 
         createLocalPeerConnection(sdpConstraints);
         createLocalSocket();
-
-        MediaStream stream = peerConnectionFactory.createLocalMediaStream("102");
-        stream.addTrack(localAudioTrack);
-        stream.addTrack(localVideoTrack);
-        localPeer.addStream(stream);
-
-        createLocalOffer(sdpConstraints);
     }
 
     public void createLocalPeerConnection(MediaConstraints sdpConstraints) {
@@ -160,54 +179,145 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onIceCandidate(IceCandidate iceCandidate) {
                 super.onIceCandidate(iceCandidate);
-                try {
-                    JSONObject json = new JSONObject();
-                    json.put("type", "candidate");
-                    json.put("label", iceCandidate.sdpMLineIndex);
-                    json.put("id", iceCandidate.sdpMid);
-                    json.put("candidate", iceCandidate.sdp);
-                    ws1.send(json.toString());
-                } catch (JSONException e) {
-                    e.printStackTrace();
+                Map<String, String> iceCandidateParams = new HashMap<>();
+                iceCandidateParams.put("sdpMid", iceCandidate.sdpMid);
+                iceCandidateParams.put("sdpMLineIndex", Integer.toString(iceCandidate.sdpMLineIndex));
+                iceCandidateParams.put("candidate", iceCandidate.sdp);
+                if (webSocketAdapter.getUserId() != null) {
+                    iceCandidateParams.put("endpointName", webSocketAdapter.getUserId());
+                    webSocketAdapter.sendJson(webSocket, "onIceCandidate", iceCandidateParams);
+                } else {
+                    webSocketAdapter.addIceCandidate(iceCandidateParams);
                 }
             }
         });
     }
 
     public void createLocalSocket() {
-        Request request = new Request.Builder().url(socketAddress).build();
-        CustomWebSocketListener listener = new CustomWebSocketListener(this, localPeer);
-        OkHttpClient.Builder okHttpClientBuilder = new OkHttpClient.Builder();
-        webSocket1 = okHttpClientBuilder.build();
-        ws1 = webSocket1.newWebSocket(request, listener);
-        webSocket1.dispatcher().executorService().shutdown();
+        new WebSocketTask().execute(this);
     }
 
+    class WebSocketTask extends AsyncTask<MainActivity, Void, Void> {
+
+        protected Void doInBackground(MainActivity... parameters) {
+
+            try {
+                WebSocketFactory factory = new WebSocketFactory();
+                // Create a custom SSL context.
+
+                SSLContext sslContext = SSLContext.getInstance("TLS");
+                sslContext.init(null, trustManagers, new java.security.SecureRandom());
+
+                // Set the custom SSL context.
+                factory.setSSLContext(sslContext);
+                webSocket = new WebSocketFactory().createSocket(socketAddress);
+                webSocketAdapter = new CustomWebSocketAdapter(parameters[0], localPeer);
+                webSocket.addListener(webSocketAdapter);
+                webSocket.connect();
+            }catch (OpeningHandshakeException e) {
+                // Status line.
+                StatusLine sl = e.getStatusLine();
+                System.out.println("=== Status Line ===");
+                System.out.format("HTTP Version  = %s\n", sl.getHttpVersion());
+                System.out.format("Status Code   = %d\n", sl.getStatusCode());
+                System.out.format("Reason Phrase = %s\n", sl.getReasonPhrase());
+
+                // HTTP headers.
+                Map<String, List<String>> headers = e.getHeaders();
+                System.out.println("=== HTTP Headers ===");
+                for (Map.Entry<String, List<String>> entry : headers.entrySet())
+                {
+                    // Header name.
+                    String name = entry.getKey();
+
+                    // Values of the header.
+                    List<String> values = entry.getValue();
+
+                    if (values == null || values.size() == 0)
+                    {
+                        // Print the name only.
+                        System.out.println(name);
+                        continue;
+                    }
+
+                    for (String value : values)
+                    {
+                        // Print the name and the value.
+                        System.out.format("%s: %s\n", name, value);
+                    }
+                }
+            } catch (IOException | KeyManagementException | WebSocketException | NoSuchAlgorithmException e) {
+                e.printStackTrace();
+            }
+            return null;
+        }
+
+        protected void onProgressUpdate(Void... progress) {
+            System.out.println("PROGRESS " + Arrays.toString(progress));
+        }
+
+        protected void onPostExecute(Void results) {
+            MediaConstraints sdpConstraints = new MediaConstraints();
+            sdpConstraints.mandatory.add(new MediaConstraints.KeyValuePair("offerToReceiveAudio", "true"));
+            sdpConstraints.mandatory.add(new MediaConstraints.KeyValuePair("offerToReceiveVideo", "true"));
+
+            MediaStream stream = peerConnectionFactory.createLocalMediaStream("102");
+            stream.addTrack(localAudioTrack);
+            stream.addTrack(localVideoTrack);
+            localPeer.addStream(stream);
+
+            createLocalOffer(sdpConstraints);
+        }
+    }
+
+    /* Trust All Certificates */
+    final TrustManager[] trustManagers = new TrustManager[]{new X509TrustManager() {
+        @Override
+        public X509Certificate[] getAcceptedIssuers() {
+            X509Certificate[] x509Certificates = new X509Certificate[0];
+            return x509Certificates;
+        }
+
+        @Override
+        public void checkServerTrusted(final X509Certificate[] chain,
+                                       final String authType) throws CertificateException {
+            System.out.println(": authType: " + String.valueOf(authType));
+        }
+
+        @Override
+        public void checkClientTrusted(final X509Certificate[] chain,
+                                       final String authType) throws CertificateException {
+            System.out.println(": authType: " + String.valueOf(authType));
+        }
+    }};
+
     public void createLocalOffer(MediaConstraints sdpConstraints) {
+
         localPeer.createOffer(new CustomSdpObserver("localCreateOffer") {
             @Override
             public void onCreateSuccess(SessionDescription sessionDescription) {
                 super.onCreateSuccess(sessionDescription);
                 localPeer.setLocalDescription(new CustomSdpObserver("localSetLocalDesc"), sessionDescription);
-                try {
-                    JSONObject json = new JSONObject();
-                    json.put("type", sessionDescription.type);
-                    json.put("sdp", sessionDescription.description);
-                    ws1.send(json.toString());
-                } catch (JSONException e) {
-                    e.printStackTrace();
+                Map<String, String> localOfferParams = new HashMap<>();
+                localOfferParams.put("audioOnly", "false");
+                localOfferParams.put("doLoopback", "false");
+                localOfferParams.put("sdpOffer", sessionDescription.description);
+                if (webSocketAdapter.getId() > 1) {
+                    webSocketAdapter.sendJson(webSocket, "publishVideo", localOfferParams);
+                } else {
+                    webSocketAdapter.setLocalOfferParams(localOfferParams);
                 }
             }
         }, sdpConstraints);
     }
 
-    public void call(View view) {
+    public void call() {
+        /*
         start_call.setEnabled(false);
         init_call.setEnabled(false);
         end_call.setEnabled(true);
-
+        */
         createRemotePeerConnection();
-        createRemoteSocket();
     }
 
     public void createRemotePeerConnection() {
@@ -224,18 +334,15 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onIceCandidate(IceCandidate iceCandidate) {
                 super.onIceCandidate(iceCandidate);
-                try {
-                    JSONObject json = new JSONObject();
-                    json.put("type", "candidate");
-                    json.put("label", iceCandidate.sdpMLineIndex);
-                    json.put("id", iceCandidate.sdpMid);
-                    json.put("candidate", iceCandidate.sdp);
-                    ws2.send(json.toString());
-                } catch (JSONException e) {
-                    e.printStackTrace();
-                }
+                Map<String, String> iceCandidateParams = new HashMap<>();
+                iceCandidateParams.put("sdpMid", iceCandidate.sdpMid);
+                iceCandidateParams.put("sdpMLineIndex", Integer.toString(iceCandidate.sdpMLineIndex));
+                iceCandidateParams.put("candidate", iceCandidate.sdp);
+                iceCandidateParams.put("endpointName", webSocketAdapter.getRemoteUserId());
+                webSocketAdapter.sendJson(webSocket, "onIceCandidate", iceCandidateParams);
             }
 
+            @Override
             public void onAddStream(MediaStream mediaStream) {
                 super.onAddStream(mediaStream);
                 gotRemoteStream(mediaStream);
@@ -247,21 +354,18 @@ public class MainActivity extends AppCompatActivity {
 
             }
         });
+        MediaStream stream = peerConnectionFactory.createLocalMediaStream("105");
+        stream.addTrack(localAudioTrack);
+        stream.addTrack(localVideoTrack);
+        remotePeer.addStream(stream);
     }
 
-    public void createRemoteSocket() {
-        Request request = new Request.Builder().url(socketAddress).build();
-        CustomWebSocketListener listener = new CustomWebSocketListener(this, remotePeer);
-        OkHttpClient.Builder okHttpClientBuilder = new OkHttpClient.Builder();
-        webSocket2 = okHttpClientBuilder.build();
-        ws2 = webSocket2.newWebSocket(request, listener);
-        listener.setWebSocket(ws2);
-        webSocket2.dispatcher().executorService().shutdown();
-    }
 
     public void hangup(View view) {
-        ws1.send("bye");
-        ws2.send("bye");
+        // webSocket1.send("bye");
+        // ws1.close();
+        // webSocket2.send("bye");
+        // ws2.close();
         localPeer.close();
         remotePeer.close();
         localPeer = null;
@@ -302,7 +406,7 @@ public class MainActivity extends AppCompatActivity {
         return null;
     }
 
-    private void gotRemoteStream(MediaStream stream) {
+    private void gotRemoteStream(final MediaStream stream) {
         final VideoTrack videoTrack = stream.videoTracks.getFirst();
         runOnUiThread(new Runnable() {
             @Override
@@ -311,10 +415,28 @@ public class MainActivity extends AppCompatActivity {
                     remoteRenderer = new VideoRenderer(remoteVideoView);
                     remoteVideoView.setVisibility(View.VISIBLE);
                     videoTrack.addRenderer(remoteRenderer);
+                    MediaStream stream = peerConnectionFactory.createLocalMediaStream("105");
+                    stream.addTrack(localAudioTrack);
+                    stream.addTrack(localVideoTrack);
+                    remotePeer.removeStream(stream);
+                    remotePeer.addStream(stream);
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
             }
         });
     }
+
+    @Override
+    protected void onDestroy() {
+        webSocketAdapter.sendJson(webSocket, "closeSession", new HashMap<String, String>());
+        super.onDestroy();
+    }
+
+    @Override
+    public void onBackPressed() {
+        webSocketAdapter.sendJson(webSocket, "closeSession", new HashMap<String, String>());
+        super.onBackPressed();
+    }
+
 }
