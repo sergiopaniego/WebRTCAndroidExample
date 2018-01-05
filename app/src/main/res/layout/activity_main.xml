@@ -37,18 +37,16 @@
 
     </LinearLayout>
 
-    <LinearLayout
+    <RelativeLayout
         android:id="@+id/linearLayout"
-        android:layout_width="0dp"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         app:layout_constraintBottom_toBottomOf="parent"
-        android:layout_marginBottom="8dp"
-        android:layout_marginLeft="8dp"
+        android:layout_marginStart="30dp"
         app:layout_constraintLeft_toLeftOf="parent"
         android:layout_marginRight="8dp"
         app:layout_constraintRight_toRightOf="parent"
-        android:layout_marginTop="8dp"
         app:layout_constraintTop_toBottomOf="@+id/activity_main">
 
         <Button
@@ -59,29 +57,42 @@
             android:layout_margin="5dp"
             android:layout_weight="1"
             android:text="Start"
-            android:onClick="start"/>
+            android:onClick="start"
+            android:layout_centerVertical="true" />
 
-        <Button
-            android:id="@+id/init_call"
-            style="@android:style/Widget.Material.Button.Borderless.Colored"
+        <LinearLayout
+            android:id="@+id/linearLayout2"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_margin="5dp"
-            android:layout_weight="1"
-            android:enabled="false"
-            android:text="Call"
-            android:onClick="call"/>
+            android:orientation="vertical"
+            app:layout_constraintBottom_toBottomOf="parent"
+            android:layout_marginLeft="200dp"
+            app:layout_constraintLeft_toLeftOf="parent"
+            android:layout_marginRight="8dp"
+            app:layout_constraintRight_toRightOf="parent"
+            android:layout_centerVertical="true"
+            android:gravity="end">
+            <EditText
+                android:id="@+id/session_name"
+                style="@android:style/Widget.Material.Button.Borderless.Colored"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:inputType="text"
+                android:hint="Session Name"
+                android:text="SessionA"/>
 
-        <Button
-            android:id="@+id/end_call"
-            style="@android:style/Widget.Material.Button.Borderless.Colored"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_margin="5dp"
-            android:layout_weight="1"
-            android:enabled="false"
-            android:text="Hangup"
-            android:onClick="hangup"/>
-    </LinearLayout>
+            <EditText
+                android:id="@+id/participant_name"
+                style="@android:style/Widget.Material.Button.Borderless.Colored"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:inputType="text"
+                android:hint="Participant Name"
+                android:text="Participant27"/>
+
+        </LinearLayout>
+    </RelativeLayout>
 
 </android.support.constraint.ConstraintLayout>

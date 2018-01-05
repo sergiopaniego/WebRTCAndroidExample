@@ -7,12 +7,11 @@ import android.os.Bundle;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
+import android.widget.EditText;
 
-
-import com.neovisionaries.ws.client.OpeningHandshakeException;
-import com.neovisionaries.ws.client.StatusLine;
 import com.neovisionaries.ws.client.WebSocket;
 import com.neovisionaries.ws.client.WebSocketException;
 import com.neovisionaries.ws.client.WebSocketFactory;
@@ -21,14 +20,12 @@ import org.webrtc.AudioSource;
 import org.webrtc.AudioTrack;
 import org.webrtc.Camera1Enumerator;
 import org.webrtc.CameraEnumerator;
-import org.webrtc.DataChannel;
 import org.webrtc.EglBase;
 import org.webrtc.IceCandidate;
 import org.webrtc.MediaConstraints;
 import org.webrtc.MediaStream;
 import org.webrtc.PeerConnection;
 import org.webrtc.PeerConnectionFactory;
-import org.webrtc.RtpReceiver;
 import org.webrtc.SessionDescription;
 import org.webrtc.SurfaceViewRenderer;
 import org.webrtc.VideoCapturer;
@@ -38,8 +35,6 @@ import org.webrtc.VideoTrack;
 
 
 import java.io.IOException;
-import java.net.URI;
-import java.net.URISyntaxException;
 import java.security.KeyManagementException;
 import java.security.NoSuchAlgorithmException;
 import java.security.cert.CertificateException;
@@ -59,32 +54,26 @@ import butterknife.ButterKnife;
 
 public class MainActivity extends AppCompatActivity {
 
-    private final int MY_PERMISSIONS_REQUEST_CAMERA = 100;
-    private final int MY_PERMISSIONS_REQUEST_RECORD_AUDIO = 101;
-    private final int MY_PERMISSIONS_REQUEST = 102;
+    private static final String TAG = "MainActivity";
+    private static final int MY_PERMISSIONS_REQUEST_CAMERA = 100;
+    private static final int MY_PERMISSIONS_REQUEST_RECORD_AUDIO = 101;
+    private static final int MY_PERMISSIONS_REQUEST = 102;
 
     private PeerConnection localPeer, remotePeer;
     private PeerConnectionFactory peerConnectionFactory;
     private VideoRenderer remoteRenderer;
     private AudioTrack localAudioTrack;
     private VideoTrack localVideoTrack;
-    // private String socketAddress = "wss://demos.openvidu.io:8443/";
     private String socketAddress = "wss://demos.openvidu.io:8443/room";
-    // private String socketAddress = "https://16e595ce.ngrok.io";
-    // private String socketAddress = "http://10.0.2.2:1337/SessionA?secret=MY_SECRET";
-    private String session = "/SessionA";
-    private String secret = "?secret=MY_SECRET";
     private WebSocket webSocket;
     private CustomWebSocketAdapter webSocketAdapter;
-    private WebSocket webSocket2;
-    private CustomWebSocketAdapter2 webSocketAdapter2;
 
     @BindView(R.id.start_call)
     Button start_call;
-    @BindView(R.id.init_call)
-    Button init_call;
-    @BindView(R.id.end_call)
-    Button end_call;
+    @BindView(R.id.session_name)
+    EditText session_name;
+    @BindView(R.id.participant_name)
+    EditText participant_name;
     @BindView(R.id.remote_gl_surface_view)
     SurfaceViewRenderer remoteVideoView;
     @BindView(R.id.local_gl_surface_view)
@@ -142,7 +131,6 @@ public class MainActivity extends AppCompatActivity {
 
     public void start(View view) {
         start_call.setEnabled(false);
-        init_call.setEnabled(true);
         PeerConnectionFactory.initializeAndroidGlobals(this, true);
 
         PeerConnectionFactory.Options options = new PeerConnectionFactory.Options();
@@ -203,49 +191,13 @@ public class MainActivity extends AppCompatActivity {
 
             try {
                 WebSocketFactory factory = new WebSocketFactory();
-                // Create a custom SSL context.
-
                 SSLContext sslContext = SSLContext.getInstance("TLS");
                 sslContext.init(null, trustManagers, new java.security.SecureRandom());
-
-                // Set the custom SSL context.
                 factory.setSSLContext(sslContext);
                 webSocket = new WebSocketFactory().createSocket(socketAddress);
-                webSocketAdapter = new CustomWebSocketAdapter(parameters[0], localPeer);
+                webSocketAdapter = new CustomWebSocketAdapter(parameters[0], localPeer, session_name.getText().toString(), participant_name.getText().toString());
                 webSocket.addListener(webSocketAdapter);
                 webSocket.connect();
-            }catch (OpeningHandshakeException e) {
-                // Status line.
-                StatusLine sl = e.getStatusLine();
-                System.out.println("=== Status Line ===");
-                System.out.format("HTTP Version  = %s\n", sl.getHttpVersion());
-                System.out.format("Status Code   = %d\n", sl.getStatusCode());
-                System.out.format("Reason Phrase = %s\n", sl.getReasonPhrase());
-
-                // HTTP headers.
-                Map<String, List<String>> headers = e.getHeaders();
-                System.out.println("=== HTTP Headers ===");
-                for (Map.Entry<String, List<String>> entry : headers.entrySet())
-                {
-                    // Header name.
-                    String name = entry.getKey();
-
-                    // Values of the header.
-                    List<String> values = entry.getValue();
-
-                    if (values == null || values.size() == 0)
-                    {
-                        // Print the name only.
-                        System.out.println(name);
-                        continue;
-                    }
-
-                    for (String value : values)
-                    {
-                        // Print the name and the value.
-                        System.out.format("%s: %s\n", name, value);
-                    }
-                }
             } catch (IOException | KeyManagementException | WebSocketException | NoSuchAlgorithmException e) {
                 e.printStackTrace();
             }
@@ -253,7 +205,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         protected void onProgressUpdate(Void... progress) {
-            System.out.println("PROGRESS " + Arrays.toString(progress));
+            Log.i(TAG,"PROGRESS " + Arrays.toString(progress));
         }
 
         protected void onPostExecute(Void results) {
@@ -281,13 +233,13 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void checkServerTrusted(final X509Certificate[] chain,
                                        final String authType) throws CertificateException {
-            System.out.println(": authType: " + String.valueOf(authType));
+            Log.i(TAG,": authType: " + String.valueOf(authType));
         }
 
         @Override
         public void checkClientTrusted(final X509Certificate[] chain,
                                        final String authType) throws CertificateException {
-            System.out.println(": authType: " + String.valueOf(authType));
+            Log.i(TAG,": authType: " + String.valueOf(authType));
         }
     }};
 
@@ -312,11 +264,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void call() {
-        /*
-        start_call.setEnabled(false);
-        init_call.setEnabled(false);
-        end_call.setEnabled(true);
-        */
         createRemotePeerConnection();
     }
 
@@ -347,12 +294,6 @@ public class MainActivity extends AppCompatActivity {
                 super.onAddStream(mediaStream);
                 gotRemoteStream(mediaStream);
             }
-
-            @Override
-            public void onIceGatheringChange(PeerConnection.IceGatheringState iceGatheringState) {
-                super.onIceGatheringChange(iceGatheringState);
-
-            }
         });
         MediaStream stream = peerConnectionFactory.createLocalMediaStream("105");
         stream.addTrack(localAudioTrack);
@@ -362,17 +303,11 @@ public class MainActivity extends AppCompatActivity {
 
 
     public void hangup(View view) {
-        // webSocket1.send("bye");
-        // ws1.close();
-        // webSocket2.send("bye");
-        // ws2.close();
         localPeer.close();
         remotePeer.close();
         localPeer = null;
         remotePeer = null;
         start_call.setEnabled(true);
-        init_call.setEnabled(false);
-        end_call.setEnabled(false);
     }
 
     public VideoCapturer createVideoGrabber() {

@@ -1,5 +1,7 @@
 package com.sergiopaniegoblanco.webrtcexampleapp;
 
+import android.util.Log;
+
 import com.neovisionaries.ws.client.ThreadType;
 import com.neovisionaries.ws.client.WebSocket;
 import com.neovisionaries.ws.client.WebSocketException;
@@ -18,10 +20,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import java.util.logging.Handler;
 
 /**
  * Created by sergiopaniegoblanco on 02/12/2017.
@@ -29,26 +29,29 @@ import java.util.logging.Handler;
 
 public final class CustomWebSocketAdapter implements WebSocketListener {
 
-    private static final String JSONRPCVERSION = "2.0";
+    private static final String TAG = "CustomWebSocketAdapter";
+    private static final String JSON_RPCVERSION = "2.0";
+    private static final int PING_MESSAGE_INTERVAL = 3;
 
     private MainActivity mainActivity;
     private PeerConnection localPeer;
-    private int pingMessageInterval = 3;
     private int id;
     private String sessionId;
     private List<Map<String, String>> iceCandidatesParams;
     private Map<String, String> localOfferParams;
     private String userId;
     private String remoteUserId;
-    private String storedSessionDescription;
+    private String sessionName;
+    private String participantName;
 
-    public CustomWebSocketAdapter(MainActivity mainActivity, PeerConnection localPeer) {
+    public CustomWebSocketAdapter(MainActivity mainActivity, PeerConnection localPeer, String sessionName, String participantName) {
         this.mainActivity = mainActivity;
         this.localPeer = localPeer;
         this.id = 0;
         iceCandidatesParams = new ArrayList<>();
+        this.sessionName = sessionName;
+        this.participantName = participantName;
     }
-
 
     public String getUserId() {
         return userId;
@@ -56,39 +59,35 @@ public final class CustomWebSocketAdapter implements WebSocketListener {
     public String getRemoteUserId() {
         return remoteUserId;
     }
-
-    public synchronized int getId() {
+    public int getId() {
         return id;
     }
-    public synchronized void updateId() {
+    public void updateId() {
         id++;
     }
 
     @Override
     public void onStateChanged(WebSocket websocket, WebSocketState newState) throws Exception {
-        System.out.println("State changed: " + newState.name());
+        Log.i(TAG, "State changed: " + newState.name());
     }
 
     @Override
     public void onConnected(WebSocket websocket, Map<String, List<String>> headers) throws Exception {
-        System.out.println("Connected");
+        Log.i(TAG, "Connected");
 
-        // Send ping
         pingMessageHandler(websocket);
 
-        // Send request to join the room
         Map<String, String> joinRoomParams = new HashMap<>();
         joinRoomParams.put("dataChannels", "false");
-        joinRoomParams.put("metadata", "{\"clientData\": \"Participant38\"}");
+        joinRoomParams.put("metadata", "{\"clientData\": \"" + participantName + "\"}");
         joinRoomParams.put("secret", "MY_SECRET");
-        joinRoomParams.put("session", "wss://demos.openvidu.io:8443/SessionA");
+        joinRoomParams.put("session", "wss://demos.openvidu.io:8443/" + sessionName);
         joinRoomParams.put("token", "gr50nzaqe6avt65cg5v06");
         sendJson(websocket, "joinRoom", joinRoomParams);
 
 
         if (localOfferParams != null) {
             sendJson(websocket, "publishVideo", localOfferParams);
-            System.out.println("PUBLISH VIDEO" + localOfferParams);
         }
     }
 
@@ -104,206 +103,205 @@ public final class CustomWebSocketAdapter implements WebSocketListener {
                 }
                 sendJson(webSocket, "ping", pingParams);
             }
-        }, 0L, pingMessageInterval, TimeUnit.SECONDS);
+        }, 0L, PING_MESSAGE_INTERVAL, TimeUnit.SECONDS);
     }
 
     @Override
     public void onConnectError(WebSocket websocket, WebSocketException cause) throws Exception {
-        System.out.println("Connect error: " + cause);
+        Log.i(TAG, "Connect error: " + cause);
     }
 
     @Override
     public void onDisconnected(WebSocket websocket, WebSocketFrame serverCloseFrame, WebSocketFrame clientCloseFrame, boolean closedByServer) throws Exception {
-        System.out.println("Disconnected " + serverCloseFrame.getCloseReason() + " " + clientCloseFrame.getCloseReason() + " " + closedByServer);
+        Log.i(TAG, "Disconnected " + serverCloseFrame.getCloseReason() + " " + clientCloseFrame.getCloseReason() + " " + closedByServer);
     }
 
     @Override
     public void onFrame(WebSocket websocket, WebSocketFrame frame) throws Exception {
-        // System.out.println("Frame!");
+        Log.i(TAG, "Frame");
     }
 
     @Override
     public void onContinuationFrame(WebSocket websocket, WebSocketFrame frame) throws Exception {
-        System.out.println("Continuation Frame");
+        Log.i(TAG, "Continuation Frame");
     }
 
     @Override
     public void onTextFrame(WebSocket websocket, WebSocketFrame frame) throws Exception {
-        // System.out.println("Text Frame!");
+        Log.i(TAG, "Text Frame");
     }
 
     @Override
     public void onBinaryFrame(WebSocket websocket, WebSocketFrame frame) throws Exception {
-        System.out.println("Binary Frame");
+        Log.i(TAG, "Binary Frame");
     }
 
     @Override
     public void onCloseFrame(WebSocket websocket, WebSocketFrame frame) throws Exception {
-        System.out.println("Close Frame");
+        Log.i(TAG, "Close Frame");
     }
 
     @Override
     public void onPingFrame(WebSocket websocket, WebSocketFrame frame) throws Exception {
-        System.out.println("Ping Frame");
+        Log.i(TAG, "Ping Frame");
     }
 
     @Override
     public void onPongFrame(WebSocket websocket, WebSocketFrame frame) throws Exception {
-        System.out.println("Pong Frame");
+        Log.i(TAG, "Pong Frame");
     }
 
     @Override
     public void onTextMessage(final WebSocket websocket, String text) throws Exception {
-        System.err.println("ENTRADA " + text);
+        Log.i(TAG, "Text Message " + text);
         JSONObject json = new JSONObject(text);
         if (json.has("result")) {
-            JSONObject result = new JSONObject(json.getString("result"));
-            if (result.has("sdpAnswer")) {
-                // System.out.println(text);
-                // System.out.println("ANSWER!");
-                saveAnswer(websocket, result);
-            } else if (result.has("sessionId")) {
-                if (result.has("value")) {
-                    // addOtherParticipants
-                    // receiveVideoFrom
-                    if (result.getJSONArray("value").length() != 0) {
-                        // System.out.println("HAY MÁS CONEXIONES");
-                        this.remoteUserId = new JSONObject(result.getJSONArray("value").getJSONObject(0).getString("metadata")).getString("clientData");
-                        mainActivity.call();
-                    }
-                    this.userId = result.getString("id");
-                    for (Map<String, String> iceCandidate : iceCandidatesParams) {
-                        iceCandidate.put("endpointName", this.userId);
-                        sendJson(websocket, "onIceCandidate", iceCandidate);
-                        // System.out.println("ICE CANDIDATE SENT " + this.userId);
-                    }
-                }
-                // System.out.println(text);
-                this.sessionId = result.getString("sessionId");
-                // System.out.println("SESION ID -> " + this.sessionId);
-            } else if (result.has("value")) {
-                // System.out.println("PONG!!!!!!!!!!!");
-            } else {
-                // System.out.println("UNRECOGNIZED " + result);
-            }
+            handleResult(websocket, json);
         } else {
-            // METHOD
-            if(!json.has("params")) {
-                // System.out.println(json);
-            } else {
-                JSONObject params = new JSONObject(json.getString("params"));
-                String method = json.getString("method");
-                switch (method) {
-                    case "iceCandidate":
-                        if (!params.getString("endpointName").equals(userId)) {
-                            saveIceCandidate(json.getJSONObject("params"), false);
-                        } else {
-                            saveIceCandidate(json.getJSONObject("params"), true);
-                        }
-                        break;
-                    case "participantJoined":
-                        remoteUserId = params.getString("id");
-                        mainActivity.call();
-                        break;
-                    case "participantPublished":
-                        mainActivity.getRemotePeer().createOffer(new CustomSdpObserver("remoteCreateOffer") {
-                            @Override
-                            public void onCreateSuccess(SessionDescription sessionDescription) {
-                                super.onCreateSuccess(sessionDescription);
-                                mainActivity.getRemotePeer().setLocalDescription(new CustomSdpObserver("remoteSetLocalDesc"), sessionDescription);
-                                Map<String, String> remoteOfferParams = new HashMap<>();
-                                remoteOfferParams.put("sdpOffer", sessionDescription.description);
-                                remoteOfferParams.put("sender", remoteUserId + "_webcam");
-                                sendJson(websocket, "receiveVideoFrom", remoteOfferParams);
-                            }
-                        }, new MediaConstraints());
-                        break;
-                    case "participantLeft":
-                        mainActivity.setRemotePeer(null);
-                        break;
+            handleMethod(websocket, json);
+        }
+    }
+
+    private void handleResult(final WebSocket webSocket, JSONObject json) throws Exception {
+        JSONObject result = new JSONObject(json.getString("result"));
+        if (result.has("sdpAnswer")) {
+            saveAnswer(result);
+        } else if (result.has("sessionId")) {
+            if (result.has("value")) {
+                if (result.getJSONArray("value").length() != 0) {
+                    this.remoteUserId = new JSONObject(result.getJSONArray("value").getJSONObject(0).getString("metadata")).getString("clientData");
+                    mainActivity.call();
                 }
+                this.userId = result.getString("id");
+                for (Map<String, String> iceCandidate : iceCandidatesParams) {
+                    iceCandidate.put("endpointName", this.userId);
+                    sendJson(webSocket, "onIceCandidate", iceCandidate);
+                }
+            }
+            this.sessionId = result.getString("sessionId");
+        } else if (result.has("value")) {
+            Log.i(TAG, "pong");
+        } else {
+            Log.e(TAG, "Unrecognized " + result);
+        }
+    }
+
+    private void handleMethod(final WebSocket webSocket, JSONObject json) throws Exception {
+        if(!json.has("params")) {
+            Log.e(TAG, "No params");
+        } else {
+            JSONObject params = new JSONObject(json.getString("params"));
+            String method = json.getString("method");
+            switch (method) {
+                case "iceCandidate":
+                    if (!params.getString("endpointName").equals(userId)) {
+                        saveIceCandidate(json.getJSONObject("params"), false);
+                    } else {
+                        saveIceCandidate(json.getJSONObject("params"), true);
+                    }
+                    break;
+                case "participantJoined":
+                    remoteUserId = params.getString("id");
+                    mainActivity.call();
+                    break;
+                case "participantPublished":
+                    mainActivity.getRemotePeer().createOffer(new CustomSdpObserver("remoteCreateOffer") {
+                        @Override
+                        public void onCreateSuccess(SessionDescription sessionDescription) {
+                            super.onCreateSuccess(sessionDescription);
+                            mainActivity.getRemotePeer().setLocalDescription(new CustomSdpObserver("remoteSetLocalDesc"), sessionDescription);
+                            Map<String, String> remoteOfferParams = new HashMap<>();
+                            remoteOfferParams.put("sdpOffer", sessionDescription.description);
+                            remoteOfferParams.put("sender", remoteUserId + "_webcam");
+                            sendJson(webSocket, "receiveVideoFrom", remoteOfferParams);
+                        }
+                    }, new MediaConstraints());
+                    break;
+                case "participantLeft":
+                    mainActivity.setRemotePeer(null);
+                    break;
             }
         }
     }
 
     @Override
     public void onBinaryMessage(WebSocket websocket, byte[] binary) throws Exception {
-        System.out.println("Binary Message");
+        Log.i(TAG, "Binary Message");
     }
 
     @Override
     public void onSendingFrame(WebSocket websocket, WebSocketFrame frame) throws Exception {
-        System.out.println("Sending Frame");
+        Log.i(TAG, "Sending Frame");
     }
 
     @Override
     public void onFrameSent(WebSocket websocket, WebSocketFrame frame) throws Exception {
-        // System.out.println("Frame sent");
+        Log.i(TAG, "Frame sent");
     }
 
     @Override
     public void onFrameUnsent(WebSocket websocket, WebSocketFrame frame) throws Exception {
-        System.out.println("Frame unsent");
+        Log.i(TAG, "Frame unsent");
     }
 
     @Override
     public void onThreadCreated(WebSocket websocket, ThreadType threadType, Thread thread) throws Exception {
-        System.out.println("Thread created");
+        Log.i(TAG, "Thread created");
     }
 
     @Override
     public void onThreadStarted(WebSocket websocket, ThreadType threadType, Thread thread) throws Exception {
-        System.out.println("Thread started");
+        Log.i(TAG, "Thread started");
     }
 
     @Override
     public void onThreadStopping(WebSocket websocket, ThreadType threadType, Thread thread) throws Exception {
-        System.out.println("Thread stopping");
+        Log.i(TAG, "Thread stopping");
     }
 
     @Override
     public void onError(WebSocket websocket, WebSocketException cause) throws Exception {
-        System.out.println("Error! " + cause);
+        Log.i(TAG, "Error! " + cause);
     }
 
     @Override
     public void onFrameError(WebSocket websocket, WebSocketException cause, WebSocketFrame frame) throws Exception {
-        System.out.println("Frame error");
+        Log.i(TAG, "Frame error");
     }
 
     @Override
     public void onMessageError(WebSocket websocket, WebSocketException cause, List<WebSocketFrame> frames) throws Exception {
-        System.out.println("Message error! "+ cause);
+        Log.i(TAG, "Message error! "+ cause);
     }
 
     @Override
     public void onMessageDecompressionError(WebSocket websocket, WebSocketException cause, byte[] compressed) throws Exception {
-        System.out.println("Message Decompression Error");
+        Log.i(TAG, "Message Decompression Error");
     }
 
     @Override
     public void onTextMessageError(WebSocket websocket, WebSocketException cause, byte[] data) throws Exception {
-        System.out.println("Text Message Error! " + cause);
+        Log.i(TAG, "Text Message Error! " + cause);
     }
 
     @Override
     public void onSendError(WebSocket websocket, WebSocketException cause, WebSocketFrame frame) throws Exception {
-        System.out.println("Send Error! " + cause);
+        Log.i(TAG, "Send Error! " + cause);
     }
 
     @Override
     public void onUnexpectedError(WebSocket websocket, WebSocketException cause) throws Exception {
-        System.out.println("Unexpected error! " + cause);
+        Log.i(TAG, "Unexpected error! " + cause);
     }
 
     @Override
     public void handleCallbackError(WebSocket websocket, Throwable cause) throws Exception {
-        System.out.println("Handle callback error! " + cause);
+        Log.i(TAG, "Handle callback error! " + cause);
     }
 
     @Override
     public void onSendingHandshake(WebSocket websocket, String requestLine, List<String[]> headers) throws Exception {
-        // System.out.println("Sending Handshake! Hello!");
+        Log.i(TAG, "Sending Handshake! Hello!");
     }
 
     private void saveIceCandidate(JSONObject json, boolean local) throws JSONException {
@@ -315,7 +313,7 @@ public final class CustomWebSocketAdapter implements WebSocketListener {
         }
     }
 
-    private void saveAnswer(WebSocket websocket, JSONObject json) throws JSONException {
+    private void saveAnswer(JSONObject json) throws JSONException {
         SessionDescription sessionDescription = new SessionDescription(SessionDescription.Type.ANSWER, json.getString("sdpAnswer"));
         if (localPeer.getRemoteDescription() == null) {
             localPeer.setRemoteDescription(new CustomSdpObserver("localSetRemoteDesc"), sessionDescription);
@@ -330,28 +328,21 @@ public final class CustomWebSocketAdapter implements WebSocketListener {
             for (Map.Entry<String, String> param : params.entrySet()) {
                 paramsJson.put(param.getKey(), param.getValue());
             }
-            String jsonString;
+            JSONObject jsonObject = new JSONObject();
             if (method.equals("joinRoom")) {
-                jsonString = new JSONObject()
-                        .put("id", 1)
-                        .put("jsonrpc", JSONRPCVERSION)
-                        .put("method", method)
+                jsonObject.put("id", 1)
                         .put("params", paramsJson).toString();
             } else if (paramsJson.length() > 0) {
-                jsonString = new JSONObject()
-                        .put("id", getId())
-                        .put("jsonrpc", JSONRPCVERSION)
-                        .put("method", method)
+                jsonObject.put("id", getId())
                         .put("params", paramsJson).toString();
             } else {
-                jsonString = new JSONObject()
-                        .put("id", getId())
-                        .put("jsonrpc", JSONRPCVERSION)
-                        .put("method", method).toString();
+                jsonObject.put("id", getId());
             }
+            jsonObject.put("jsonrpc", JSON_RPCVERSION)
+                    .put("method", method);
+            String jsonString = jsonObject.toString();
             updateId();
             webSocket.sendText(jsonString);
-            System.err.println("SALIDA " + jsonString);
         } catch (JSONException e) {
             e.printStackTrace();
         }
