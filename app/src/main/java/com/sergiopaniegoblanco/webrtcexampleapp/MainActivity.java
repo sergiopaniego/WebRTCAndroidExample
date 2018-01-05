@@ -11,6 +11,7 @@ import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.TextView;
 
 import com.neovisionaries.ws.client.WebSocket;
 import com.neovisionaries.ws.client.WebSocketException;
@@ -78,6 +79,10 @@ public class MainActivity extends AppCompatActivity {
     SurfaceViewRenderer remoteVideoView;
     @BindView(R.id.local_gl_surface_view)
     SurfaceViewRenderer localVideoView;
+    @BindView(R.id.remote_participant)
+    TextView remote_participant;
+    @BindView(R.id.main_participant)
+    TextView main_participant;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -182,6 +187,8 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void createLocalSocket() {
+        main_participant.setText(participant_name.getText().toString());
+        main_participant.setPadding(20, 3, 20, 3);
         new WebSocketTask().execute(this);
     }
 
@@ -372,6 +379,11 @@ public class MainActivity extends AppCompatActivity {
     public void onBackPressed() {
         webSocketAdapter.sendJson(webSocket, "closeSession", new HashMap<String, String>());
         super.onBackPressed();
+    }
+
+    public void setRemoteParticipantName(String name) {
+        remote_participant.setText(name);
+        remote_participant.setPadding(20, 3, 20, 3);
     }
 
 }

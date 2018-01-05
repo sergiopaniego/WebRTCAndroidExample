@@ -1,5 +1,6 @@
 package com.sergiopaniegoblanco.webrtcexampleapp;
 
+import android.os.Handler;
 import android.util.Log;
 
 import com.neovisionaries.ws.client.ThreadType;
@@ -169,8 +170,20 @@ public final class CustomWebSocketAdapter implements WebSocketListener {
         } else if (result.has("sessionId")) {
             if (result.has("value")) {
                 if (result.getJSONArray("value").length() != 0) {
-                    this.remoteUserId = new JSONObject(result.getJSONArray("value").getJSONObject(0).getString("metadata")).getString("clientData");
+                    this.remoteUserId = result.getJSONArray("value").getJSONObject(0).getString("id");
+                    setRemoteParticipantName(new JSONObject(result.getJSONArray("value").getJSONObject(0).getString("metadata")).getString("clientData"));
                     mainActivity.call();
+                    mainActivity.getRemotePeer().createOffer(new CustomSdpObserver("remoteCreateOffer") {
+                        @Override
+                        public void onCreateSuccess(SessionDescription sessionDescription) {
+                            super.onCreateSuccess(sessionDescription);
+                            mainActivity.getRemotePeer().setLocalDescription(new CustomSdpObserver("remoteSetLocalDesc"), sessionDescription);
+                            Map<String, String> remoteOfferParams = new HashMap<>();
+                            remoteOfferParams.put("sdpOffer", sessionDescription.description);
+                            remoteOfferParams.put("sender", remoteUserId + "_webcam");
+                            sendJson(webSocket, "receiveVideoFrom", remoteOfferParams);
+                        }
+                    }, new MediaConstraints());
                 }
                 this.userId = result.getString("id");
                 for (Map<String, String> iceCandidate : iceCandidatesParams) {
@@ -202,6 +215,7 @@ public final class CustomWebSocketAdapter implements WebSocketListener {
                     break;
                 case "participantJoined":
                     remoteUserId = params.getString("id");
+                    setRemoteParticipantName(new JSONObject(params.getString("metadata")).getString("clientData"));
                     mainActivity.call();
                     break;
                 case "participantPublished":
@@ -222,6 +236,16 @@ public final class CustomWebSocketAdapter implements WebSocketListener {
                     break;
             }
         }
+    }
+
+    public void setRemoteParticipantName(final String name) {
+        Handler mainHandler = new Handler(mainActivity.getMainLooper());
+
+        Runnable myRunnable = new Runnable() {
+            @Override
+            public void run() { mainActivity.setRemoteParticipantName(name); } // This is your code
+        };
+        mainHandler.post(myRunnable);
     }
 
     @Override
