@@ -11,6 +11,9 @@ import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.FrameLayout;
+import android.widget.LinearLayout;
+import android.widget.RelativeLayout;
 import android.widget.TextView;
 
 import com.neovisionaries.ws.client.WebSocket;
@@ -69,6 +72,8 @@ public class MainActivity extends AppCompatActivity {
     private WebSocket webSocket;
     private CustomWebSocketAdapter webSocketAdapter;
 
+    @BindView(R.id.views_container)
+    LinearLayout views_container;
     @BindView(R.id.start_call)
     Button start_call;
     @BindView(R.id.session_name)
@@ -136,6 +141,11 @@ public class MainActivity extends AppCompatActivity {
 
     public void start(View view) {
         start_call.setEnabled(false);
+        session_name.setEnabled(false);
+        session_name.setFocusable(false);
+        participant_name.setEnabled(false);
+        participant_name.setFocusable(false);
+
         PeerConnectionFactory.initializeAndroidGlobals(this, true);
 
         PeerConnectionFactory.Options options = new PeerConnectionFactory.Options();

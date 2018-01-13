@@ -1,109 +1,120 @@
 <?xml version="1.0" encoding="utf-8"?>
-<android.support.constraint.ConstraintLayout
-    xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
+<android.support.constraint.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     tools:context="com.sergiopaniegoblanco.webrtcexampleapp.MainActivity">
 
-    <LinearLayout
-        android:id="@+id/activity_main"
-        android:layout_width="370dp"
-        android:layout_height="425dp"
-        android:layout_weight="1"
-        android:orientation="vertical"
-        app:layout_constraintTop_toTopOf="parent"
-        android:layout_marginTop="8dp"
-        android:layout_marginRight="8dp"
-        app:layout_constraintRight_toRightOf="parent"
-        android:layout_marginLeft="8dp"
-        app:layout_constraintLeft_toLeftOf="parent">
 
-        <FrameLayout
-            android:layout_width="match_parent"
-            android:layout_height="212dp">
-            <org.webrtc.SurfaceViewRenderer
-                android:id="@+id/local_gl_surface_view"
+    <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:fillViewport="true"
+        android:id="@+id/scrollView">
+
+        <LinearLayout
+            android:id="@+id/views_container"
+            android:layout_width="370dp"
+            android:layout_height="425dp"
+            android:layout_marginLeft="8dp"
+            android:layout_marginRight="8dp"
+            android:layout_marginTop="8dp"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            app:layout_constraintLeft_toLeftOf="parent"
+            app:layout_constraintRight_toRightOf="parent"
+            app:layout_constraintTop_toTopOf="parent">
+
+
+            <FrameLayout
                 android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:visibility="visible">
+                android:layout_height="212dp">
 
-            </org.webrtc.SurfaceViewRenderer>
-            <TextView
-                android:id="@+id/main_participant"
-                android:layout_height="wrap_content"
-                android:layout_width="wrap_content"
-                android:background="@color/colorAccent" />
-        </FrameLayout>
+                <org.webrtc.SurfaceViewRenderer
+                    android:id="@+id/local_gl_surface_view"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:visibility="visible">
+                </org.webrtc.SurfaceViewRenderer>
+
+                <TextView
+                    android:id="@+id/main_participant"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:background="@color/colorAccent" />
+            </FrameLayout>
 
 
-        <FrameLayout
-            android:layout_width="match_parent"
-            android:layout_height="212dp">
-            <org.webrtc.SurfaceViewRenderer
-                android:id="@+id/remote_gl_surface_view"
+            <FrameLayout
                 android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:visibility="visible" >
+                android:layout_height="212dp">
 
-            </org.webrtc.SurfaceViewRenderer>
-            <TextView
-                android:id="@+id/remote_participant"
-                android:layout_height="wrap_content"
-                android:layout_width="wrap_content"
-                android:background="@color/colorAccent" />
-        </FrameLayout>
+                <org.webrtc.SurfaceViewRenderer
+                    android:id="@+id/remote_gl_surface_view"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:visibility="visible">
+                </org.webrtc.SurfaceViewRenderer>
 
+                <TextView
+                    android:id="@+id/remote_participant"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:background="@color/colorAccent" />
+            </FrameLayout>
 
-    </LinearLayout>
+        </LinearLayout>
+    </ScrollView>
+
 
     <RelativeLayout
         android:id="@+id/linearLayout"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_marginRight="8dp"
+        android:layout_marginStart="30dp"
         android:orientation="horizontal"
         app:layout_constraintBottom_toBottomOf="parent"
-        android:layout_marginStart="30dp"
         app:layout_constraintLeft_toLeftOf="parent"
-        android:layout_marginRight="8dp"
         app:layout_constraintRight_toRightOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/activity_main">
+        app:layout_constraintTop_toBottomOf="@+id/scrollView">
 
         <Button
             android:id="@+id/start_call"
             style="@android:style/Widget.Material.Button.Borderless.Colored"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_centerVertical="true"
             android:layout_margin="5dp"
             android:layout_weight="1"
-            android:text="Start"
             android:onClick="start"
-            android:layout_centerVertical="true" />
+            android:text="Start" />
 
         <LinearLayout
             android:id="@+id/linearLayout2"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_centerVertical="true"
+            android:layout_marginLeft="200dp"
+            android:layout_marginRight="8dp"
+            android:gravity="end"
             android:orientation="vertical"
             app:layout_constraintBottom_toBottomOf="parent"
-            android:layout_marginLeft="200dp"
             app:layout_constraintLeft_toLeftOf="parent"
-            android:layout_marginRight="8dp"
-            app:layout_constraintRight_toRightOf="parent"
-            android:layout_centerVertical="true"
-            android:gravity="end">
+            app:layout_constraintRight_toRightOf="parent">
+
             <EditText
                 android:id="@+id/session_name"
                 style="@android:style/Widget.Material.Button.Borderless.Colored"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:inputType="text"
                 android:hint="Session Name"
-                android:text="SessionA"/>
+                android:inputType="text"
+                android:text="SessionA" />
 
             <EditText
                 android:id="@+id/participant_name"
@@ -111,9 +122,9 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:inputType="text"
                 android:hint="Participant Name"
-                android:text="Participant27"/>
+                android:inputType="text"
+                android:text="Participant27" />
 
         </LinearLayout>
     </RelativeLayout>
