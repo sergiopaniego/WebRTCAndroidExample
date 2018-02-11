@@ -15,9 +15,19 @@ import org.webrtc.RtpReceiver;
 public class CustomPeerConnectionObserver implements PeerConnection.Observer {
 
     private String logTag = this.getClass().getCanonicalName();
+    private RemoteParticipant remoteParticipant;
 
     CustomPeerConnectionObserver(String logTag) {
         this.logTag = this.logTag+" "+logTag;
+    }
+
+    CustomPeerConnectionObserver(String logTag, RemoteParticipant remoteParticipant) {
+        this.logTag = this.logTag+" "+logTag;
+        this.remoteParticipant = remoteParticipant;
+    }
+
+    public RemoteParticipant getRemoteParticipant() {
+        return remoteParticipant;
     }
 
     @Override

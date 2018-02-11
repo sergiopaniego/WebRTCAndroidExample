@@ -13,11 +13,20 @@ public class CustomSdpObserver implements SdpObserver {
 
 
     private String tag = this.getClass().getCanonicalName();
+    private RemoteParticipant remoteParticipant;
 
     CustomSdpObserver(String logTag) {
         this.tag = this.tag + " " + logTag;
     }
 
+    CustomSdpObserver(String logTag, RemoteParticipant remoteParticipant) {
+        this.tag = this.tag + " " + logTag;
+        this.remoteParticipant = remoteParticipant;
+    }
+
+    public RemoteParticipant getRemoteParticipant() {
+        return remoteParticipant;
+    }
 
     @Override
     public void onCreateSuccess(SessionDescription sessionDescription) {

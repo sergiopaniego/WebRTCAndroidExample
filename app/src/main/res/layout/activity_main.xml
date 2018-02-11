@@ -7,99 +7,85 @@
     tools:context="com.sergiopaniegoblanco.webrtcexampleapp.MainActivity">
 
 
-    <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:fillViewport="true"
-        android:id="@+id/scrollView">
+    <LinearLayout
+        android:id="@+id/linearLayout2"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_marginBottom="150dp"
+        app:layout_constraintBottom_toBottomOf="parent">
 
-        <LinearLayout
-            android:id="@+id/views_container"
-            android:layout_width="370dp"
-            android:layout_height="425dp"
-            android:layout_marginLeft="8dp"
-            android:layout_marginRight="8dp"
-            android:layout_marginTop="8dp"
-            android:layout_weight="1"
-            android:orientation="vertical"
-            app:layout_constraintLeft_toLeftOf="parent"
-            app:layout_constraintRight_toRightOf="parent"
-            app:layout_constraintTop_toTopOf="parent">
+        <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+            android:id="@+id/scrollView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
 
-
-            <FrameLayout
+            <LinearLayout
+                android:id="@+id/views_container"
                 android:layout_width="match_parent"
-                android:layout_height="212dp">
+                android:layout_height="wrap_content"
+                android:layout_marginLeft="8dp"
+                android:layout_marginRight="8dp"
+                android:layout_marginTop="8dp"
+                android:orientation="vertical"
+                app:layout_constraintLeft_toLeftOf="parent"
+                app:layout_constraintRight_toRightOf="parent"
+                app:layout_constraintTop_toTopOf="parent">
 
-                <org.webrtc.SurfaceViewRenderer
-                    android:id="@+id/local_gl_surface_view"
+                <FrameLayout
+                    android:id="@+id/peer_container"
                     android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:layout_weight="1"
-                    android:visibility="visible">
-                </org.webrtc.SurfaceViewRenderer>
+                    android:layout_height="212dp"
+                    android:layout_marginBottom="5dp">
 
-                <TextView
-                    android:id="@+id/main_participant"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:background="@color/colorAccent" />
-            </FrameLayout>
+                    <org.webrtc.SurfaceViewRenderer
+                        android:id="@+id/local_gl_surface_view"
+                        android:layout_width="match_parent"
+                        android:layout_height="212dp"
+                        android:visibility="visible" />
 
-
-            <FrameLayout
-                android:layout_width="match_parent"
-                android:layout_height="212dp">
-
-                <org.webrtc.SurfaceViewRenderer
-                    android:id="@+id/remote_gl_surface_view"
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:layout_weight="1"
-                    android:visibility="visible">
-                </org.webrtc.SurfaceViewRenderer>
-
-                <TextView
-                    android:id="@+id/remote_participant"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:background="@color/colorAccent" />
-            </FrameLayout>
-
-        </LinearLayout>
-    </ScrollView>
+                    <TextView
+                        android:id="@+id/main_participant"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:background="@color/colorAccent" />
+                </FrameLayout>
+            </LinearLayout>
+        </ScrollView>
+    </LinearLayout>
 
 
     <RelativeLayout
-        android:id="@+id/linearLayout"
+        android:id="@+id/relativeLayout"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginRight="8dp"
-        android:layout_marginStart="30dp"
+        android:layout_marginTop="8dp"
+        android:background="#ffffff"
         android:orientation="horizontal"
         app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintHorizontal_bias="0.0"
         app:layout_constraintLeft_toLeftOf="parent"
         app:layout_constraintRight_toRightOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/scrollView">
+        app:layout_constraintTop_toBottomOf="@+id/linearLayout2"
+        app:layout_constraintVertical_bias="1.0">
 
         <Button
-            android:id="@+id/start_call"
+            android:id="@+id/start_finish_call"
             style="@android:style/Widget.Material.Button.Borderless.Colored"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_centerVertical="true"
             android:layout_margin="5dp"
-            android:layout_weight="1"
+            android:layout_marginStart="30dp"
             android:onClick="start"
-            android:text="Start" />
+            android:text="@string/start_button" />
 
         <LinearLayout
-            android:id="@+id/linearLayout2"
+            android:id="@+id/linearLayout"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_alignParentEnd="true"
             android:layout_centerVertical="true"
-            android:layout_marginLeft="200dp"
-            android:layout_marginRight="8dp"
+            android:layout_marginEnd="10dp"
             android:gravity="end"
             android:orientation="vertical"
             app:layout_constraintBottom_toBottomOf="parent"
@@ -107,14 +93,24 @@
             app:layout_constraintRight_toRightOf="parent">
 
             <EditText
+                android:id="@+id/socketAddress"
+                style="@android:style/Widget.Material.Button.Borderless.Colored"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:hint="@string/socket_address"
+                android:inputType="text"
+                android:text="@string/default_socket_address" />
+
+            <EditText
                 android:id="@+id/session_name"
                 style="@android:style/Widget.Material.Button.Borderless.Colored"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:hint="Session Name"
+                android:hint="@string/session_name"
                 android:inputType="text"
-                android:text="SessionA" />
+                android:text="@string/default_session_name" />
 
             <EditText
                 android:id="@+id/participant_name"
@@ -122,9 +118,9 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:hint="Participant Name"
+                android:hint="@string/participant_name"
                 android:inputType="text"
-                android:text="Participant27" />
+                android:text="@string/default_participant_name" />
 
         </LinearLayout>
     </RelativeLayout>

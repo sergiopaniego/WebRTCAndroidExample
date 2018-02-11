@@ -2,6 +2,10 @@ package com.sergiopaniegoblanco.webrtcexampleapp;
 
 import android.os.Handler;
 import android.util.Log;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.LinearLayout;
+import android.widget.TextView;
 
 import com.neovisionaries.ws.client.ThreadType;
 import com.neovisionaries.ws.client.WebSocket;
@@ -12,10 +16,12 @@ import com.neovisionaries.ws.client.WebSocketState;
 
 import org.json.JSONException;
 import org.json.JSONObject;
+import org.webrtc.EglBase;
 import org.webrtc.IceCandidate;
 import org.webrtc.MediaConstraints;
 import org.webrtc.PeerConnection;
 import org.webrtc.SessionDescription;
+import org.webrtc.SurfaceViewRenderer;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -37,28 +43,31 @@ public final class CustomWebSocketAdapter implements WebSocketListener {
     private MainActivity mainActivity;
     private PeerConnection localPeer;
     private int id;
-    private String sessionId;
     private List<Map<String, String>> iceCandidatesParams;
     private Map<String, String> localOfferParams;
     private String userId;
-    private String remoteUserId;
     private String sessionName;
     private String participantName;
+    private LinearLayout views_container;
+    private Map<String, RemoteParticipant> participants;
+    private String remoteParticipantId;
 
-    public CustomWebSocketAdapter(MainActivity mainActivity, PeerConnection localPeer, String sessionName, String participantName) {
+    public CustomWebSocketAdapter(MainActivity mainActivity, PeerConnection localPeer, String sessionName, String participantName, LinearLayout views_container) {
         this.mainActivity = mainActivity;
         this.localPeer = localPeer;
         this.id = 0;
-        iceCandidatesParams = new ArrayList<>();
         this.sessionName = sessionName;
         this.participantName = participantName;
+        this.views_container = views_container;
+        iceCandidatesParams = new ArrayList<>();
+        participants = new HashMap<>();
     }
 
+    public Map<String, RemoteParticipant> getParticipants() {
+        return participants;
+    }
     public String getUserId() {
         return userId;
-    }
-    public String getRemoteUserId() {
-        return remoteUserId;
     }
     public int getId() {
         return id;
@@ -170,20 +179,27 @@ public final class CustomWebSocketAdapter implements WebSocketListener {
         } else if (result.has("sessionId")) {
             if (result.has("value")) {
                 if (result.getJSONArray("value").length() != 0) {
-                    this.remoteUserId = result.getJSONArray("value").getJSONObject(0).getString("id");
-                    setRemoteParticipantName(new JSONObject(result.getJSONArray("value").getJSONObject(0).getString("metadata")).getString("clientData"));
-                    mainActivity.call();
-                    mainActivity.getRemotePeer().createOffer(new CustomSdpObserver("remoteCreateOffer") {
-                        @Override
-                        public void onCreateSuccess(SessionDescription sessionDescription) {
-                            super.onCreateSuccess(sessionDescription);
-                            mainActivity.getRemotePeer().setLocalDescription(new CustomSdpObserver("remoteSetLocalDesc"), sessionDescription);
-                            Map<String, String> remoteOfferParams = new HashMap<>();
-                            remoteOfferParams.put("sdpOffer", sessionDescription.description);
-                            remoteOfferParams.put("sender", remoteUserId + "_webcam");
-                            sendJson(webSocket, "receiveVideoFrom", remoteOfferParams);
-                        }
-                    }, new MediaConstraints());
+                    for (int i = 0; i < result.getJSONArray("value").length(); i++) {
+                        final String remoteParticipantId = result.getJSONArray("value").getJSONObject(i).getString("id");
+                        final RemoteParticipant remoteParticipant = new RemoteParticipant();
+                        remoteParticipant.setId(remoteParticipantId);
+                        participants.put(remoteParticipantId, remoteParticipant);
+                        createVideoView(remoteParticipant);
+                        setRemoteParticipantName(new JSONObject(result.getJSONArray("value").getJSONObject(i).getString("metadata")).getString("clientData"), remoteParticipant);
+                        mainActivity.createRemotePeerConnection(remoteParticipant);
+                        remoteParticipant.getPeerConnection().createOffer(new CustomSdpObserver("remoteCreateOffer") {
+                            @Override
+                            public void onCreateSuccess(SessionDescription sessionDescription) {
+                                super.onCreateSuccess(sessionDescription);
+                                remoteParticipant.getPeerConnection().setLocalDescription(new CustomSdpObserver("remoteSetLocalDesc"), sessionDescription);
+                                Map<String, String> remoteOfferParams = new HashMap<>();
+                                remoteOfferParams.put("sdpOffer", sessionDescription.description);
+                                remoteOfferParams.put("sender", remoteParticipantId + "_webcam");
+                                sendJson(webSocket, "receiveVideoFrom", remoteOfferParams);
+                            }
+                        }, new MediaConstraints());
+
+                    }
                 }
                 this.userId = result.getString("id");
                 for (Map<String, String> iceCandidate : iceCandidatesParams) {
@@ -191,7 +207,6 @@ public final class CustomWebSocketAdapter implements WebSocketListener {
                     sendJson(webSocket, "onIceCandidate", iceCandidate);
                 }
             }
-            this.sessionId = result.getString("sessionId");
         } else if (result.has("value")) {
             Log.i(TAG, "pong");
         } else {
@@ -203,47 +218,92 @@ public final class CustomWebSocketAdapter implements WebSocketListener {
         if(!json.has("params")) {
             Log.e(TAG, "No params");
         } else {
-            JSONObject params = new JSONObject(json.getString("params"));
+            final JSONObject params = new JSONObject(json.getString("params"));
             String method = json.getString("method");
             switch (method) {
                 case "iceCandidate":
-                    if (!params.getString("endpointName").equals(userId)) {
-                        saveIceCandidate(json.getJSONObject("params"), false);
+                    if (params.getString("endpointName").equals(userId)) {
+                        saveIceCandidate(json.getJSONObject("params"), null);
                     } else {
-                        saveIceCandidate(json.getJSONObject("params"), true);
+                        saveIceCandidate(json.getJSONObject("params"), params.getString("endpointName"));
                     }
                     break;
                 case "participantJoined":
-                    remoteUserId = params.getString("id");
-                    setRemoteParticipantName(new JSONObject(params.getString("metadata")).getString("clientData"));
-                    mainActivity.call();
+                    final RemoteParticipant remoteParticipant = new RemoteParticipant();
+                    remoteParticipant.setId(params.getString("id"));
+                    participants.put(params.getString("id"), remoteParticipant);
+                    createVideoView(remoteParticipant);
+                    setRemoteParticipantName(new JSONObject(params.getString("metadata")).getString("clientData"), remoteParticipant);
+                    mainActivity.createRemotePeerConnection(remoteParticipant);
                     break;
                 case "participantPublished":
-                    mainActivity.getRemotePeer().createOffer(new CustomSdpObserver("remoteCreateOffer") {
+                    remoteParticipantId = params.getString("id");
+                    RemoteParticipant remoteParticipantPublished = participants.get(remoteParticipantId);
+                    remoteParticipantPublished.getPeerConnection().createOffer(new CustomSdpObserver("remoteCreateOffer", remoteParticipantPublished) {
                         @Override
                         public void onCreateSuccess(SessionDescription sessionDescription) {
                             super.onCreateSuccess(sessionDescription);
-                            mainActivity.getRemotePeer().setLocalDescription(new CustomSdpObserver("remoteSetLocalDesc"), sessionDescription);
+                            getRemoteParticipant().getPeerConnection().setLocalDescription(new CustomSdpObserver("remoteSetLocalDesc"), sessionDescription);
                             Map<String, String> remoteOfferParams = new HashMap<>();
                             remoteOfferParams.put("sdpOffer", sessionDescription.description);
-                            remoteOfferParams.put("sender", remoteUserId + "_webcam");
+                            remoteOfferParams.put("sender", getRemoteParticipant().getId() + "_webcam");
                             sendJson(webSocket, "receiveVideoFrom", remoteOfferParams);
+
                         }
                     }, new MediaConstraints());
                     break;
                 case "participantLeft":
-                    mainActivity.setRemotePeer(null);
+                    final String participantId = params.getString("name");
+                    participants.get(participantId).getPeerConnection().close();
+                    Handler mainHandler = new Handler(mainActivity.getMainLooper());
+                    Runnable myRunnable = new Runnable() {
+                        @Override
+                        public void run() {
+                            views_container.removeView(participants.get(participantId).getView());
+                        }
+                    };
+                    mainHandler.post(myRunnable);
+                    RemoteParticipant remoteParticipantToDelete = participants.get(participantId);
+                    participants.remove(remoteParticipantToDelete);
                     break;
             }
         }
     }
 
-    public void setRemoteParticipantName(final String name) {
+    private void createVideoView(final RemoteParticipant remoteParticipant) {
         Handler mainHandler = new Handler(mainActivity.getMainLooper());
 
         Runnable myRunnable = new Runnable() {
             @Override
-            public void run() { mainActivity.setRemoteParticipantName(name); } // This is your code
+            public void run() {
+                View rowView = mainActivity.getLayoutInflater().inflate(R.layout.peer_video, null);
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+                lp.setMargins(0, 0, 0, 20);
+                rowView.setLayoutParams(lp);
+                int rowId = View.generateViewId();
+                rowView.setId(rowId);
+                views_container.addView(rowView);
+                SurfaceViewRenderer videoView = (SurfaceViewRenderer)((ViewGroup)rowView).getChildAt(0);
+                remoteParticipant.setVideoView(videoView);
+                videoView.setMirror(false);
+                EglBase rootEglBase = EglBase.create();
+                videoView.init(rootEglBase.getEglBaseContext(), null);
+                videoView.setZOrderMediaOverlay(true);
+                View textView = ((ViewGroup)rowView).getChildAt(1);
+                remoteParticipant.setParticipantNameText((TextView) textView);
+                remoteParticipant.setView(rowView);
+            }
+        };
+        mainHandler.post(myRunnable);
+
+    }
+
+    private void setRemoteParticipantName(final String name, final RemoteParticipant participant) {
+        Handler mainHandler = new Handler(mainActivity.getMainLooper());
+
+        Runnable myRunnable = new Runnable() {
+            @Override
+            public void run() { mainActivity.setRemoteParticipantName(name, participant); }
         };
         mainHandler.post(myRunnable);
     }
@@ -328,12 +388,12 @@ public final class CustomWebSocketAdapter implements WebSocketListener {
         Log.i(TAG, "Sending Handshake! Hello!");
     }
 
-    private void saveIceCandidate(JSONObject json, boolean local) throws JSONException {
+    private void saveIceCandidate(JSONObject json, String endPointName) throws JSONException {
         IceCandidate iceCandidate = new IceCandidate(json.getString("sdpMid"), Integer.parseInt(json.getString("sdpMLineIndex")), json.getString("candidate"));
-        if (local) {
+        if (endPointName == null) {
             localPeer.addIceCandidate(iceCandidate);
         } else {
-            mainActivity.getRemotePeer().addIceCandidate(iceCandidate);
+            participants.get(endPointName).getPeerConnection().addIceCandidate(iceCandidate);
         }
     }
 
@@ -342,7 +402,7 @@ public final class CustomWebSocketAdapter implements WebSocketListener {
         if (localPeer.getRemoteDescription() == null) {
             localPeer.setRemoteDescription(new CustomSdpObserver("localSetRemoteDesc"), sessionDescription);
         } else {
-            mainActivity.getRemotePeer().setRemoteDescription(new CustomSdpObserver("remoteSetRemoteDesc"), sessionDescription);
+            participants.get(remoteParticipantId).getPeerConnection().setRemoteDescription(new CustomSdpObserver("remoteSetRemoteDesc"), sessionDescription);
         }
     }
 
@@ -355,10 +415,10 @@ public final class CustomWebSocketAdapter implements WebSocketListener {
             JSONObject jsonObject = new JSONObject();
             if (method.equals("joinRoom")) {
                 jsonObject.put("id", 1)
-                        .put("params", paramsJson).toString();
+                        .put("params", paramsJson);
             } else if (paramsJson.length() > 0) {
                 jsonObject.put("id", getId())
-                        .put("params", paramsJson).toString();
+                        .put("params", paramsJson);
             } else {
                 jsonObject.put("id", getId());
             }

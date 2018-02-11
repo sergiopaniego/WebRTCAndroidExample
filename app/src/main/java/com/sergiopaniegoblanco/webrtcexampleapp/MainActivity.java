@@ -9,11 +9,11 @@ import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
 import android.view.View;
+import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
-import android.widget.RelativeLayout;
 import android.widget.TextView;
 
 import com.neovisionaries.ws.client.WebSocket;
@@ -63,49 +63,41 @@ public class MainActivity extends AppCompatActivity {
     private static final int MY_PERMISSIONS_REQUEST_RECORD_AUDIO = 101;
     private static final int MY_PERMISSIONS_REQUEST = 102;
 
-    private PeerConnection localPeer, remotePeer;
+    private PeerConnection localPeer;
     private PeerConnectionFactory peerConnectionFactory;
     private VideoRenderer remoteRenderer;
     private AudioTrack localAudioTrack;
     private VideoTrack localVideoTrack;
-    private String socketAddress = "wss://demos.openvidu.io:8443/room";
     private WebSocket webSocket;
     private CustomWebSocketAdapter webSocketAdapter;
+    private VideoRenderer localRenderer;
 
     @BindView(R.id.views_container)
     LinearLayout views_container;
-    @BindView(R.id.start_call)
-    Button start_call;
+    @BindView(R.id.start_finish_call)
+    Button start_finish_call;
     @BindView(R.id.session_name)
     EditText session_name;
     @BindView(R.id.participant_name)
     EditText participant_name;
-    @BindView(R.id.remote_gl_surface_view)
-    SurfaceViewRenderer remoteVideoView;
+    @BindView(R.id.socketAddress)
+    EditText socket_address;
     @BindView(R.id.local_gl_surface_view)
     SurfaceViewRenderer localVideoView;
-    @BindView(R.id.remote_participant)
-    TextView remote_participant;
     @BindView(R.id.main_participant)
     TextView main_participant;
+    @BindView(R.id.peer_container)
+    FrameLayout peer_container;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN);
         askForPermissions();
         ButterKnife.bind(this);
         initViews();
     }
-
-    public PeerConnection getRemotePeer() {
-        return remotePeer;
-    }
-
-    public void setRemotePeer(PeerConnection remotePeer) {
-        this.remotePeer = remotePeer;
-    }
-
 
     public void askForPermissions() {
         if ((ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
@@ -131,16 +123,19 @@ public class MainActivity extends AppCompatActivity {
 
     public void initViews() {
         localVideoView.setMirror(true);
-        remoteVideoView.setMirror(false);
         EglBase rootEglBase = EglBase.create();
         localVideoView.init(rootEglBase.getEglBaseContext(), null);
         localVideoView.setZOrderMediaOverlay(true);
-        remoteVideoView.init(rootEglBase.getEglBaseContext(), null);
-        remoteVideoView.setZOrderMediaOverlay(true);
     }
 
     public void start(View view) {
-        start_call.setEnabled(false);
+        if (start_finish_call.getText().equals(getResources().getString(R.string.hang_up))) {
+            hangup();
+            return;
+        }
+        start_finish_call.setText(getResources().getString(R.string.hang_up));
+        socket_address.setEnabled(false);
+        socket_address.setFocusable(false);
         session_name.setEnabled(false);
         session_name.setFocusable(false);
         participant_name.setEnabled(false);
@@ -162,7 +157,7 @@ public class MainActivity extends AppCompatActivity {
 
         videoGrabberAndroid.startCapture(1000, 1000, 30);
 
-        final VideoRenderer localRenderer = new VideoRenderer(localVideoView);
+        localRenderer = new VideoRenderer(localVideoView);
         localVideoTrack.addRenderer(localRenderer);
 
         MediaConstraints sdpConstraints = new MediaConstraints();
@@ -211,14 +206,31 @@ public class MainActivity extends AppCompatActivity {
                 SSLContext sslContext = SSLContext.getInstance("TLS");
                 sslContext.init(null, trustManagers, new java.security.SecureRandom());
                 factory.setSSLContext(sslContext);
-                webSocket = new WebSocketFactory().createSocket(socketAddress);
-                webSocketAdapter = new CustomWebSocketAdapter(parameters[0], localPeer, session_name.getText().toString(), participant_name.getText().toString());
+                webSocket = new WebSocketFactory().createSocket(getSocketAddress());
+                webSocketAdapter = new CustomWebSocketAdapter(parameters[0], localPeer, session_name.getText().toString(), participant_name.getText().toString(), views_container);
                 webSocket.addListener(webSocketAdapter);
                 webSocket.connect();
             } catch (IOException | KeyManagementException | WebSocketException | NoSuchAlgorithmException e) {
                 e.printStackTrace();
             }
             return null;
+        }
+        private String getSocketAddress() {
+            String baseAddress = socket_address.getText().toString();
+            String secureWebSocketPrefix = "wss://";
+            String insecureWebSocketPrefix = "ws://";
+            if (baseAddress.split(secureWebSocketPrefix).length == 1 && baseAddress.split(insecureWebSocketPrefix).length == 1) {
+                baseAddress = secureWebSocketPrefix.concat(baseAddress);
+            }
+            String portSuffix = ":8443";
+            if (baseAddress.split(portSuffix).length == 1 && !baseAddress.regionMatches(true, baseAddress.length() - portSuffix.length(), portSuffix, 0, portSuffix.length())) {
+                baseAddress = baseAddress.concat(portSuffix);
+            }
+            String roomSuffix = "/room";
+            if (!baseAddress.regionMatches(true, baseAddress.length() - roomSuffix.length(), roomSuffix, 0, roomSuffix.length())) {
+                baseAddress = baseAddress.concat(roomSuffix);
+            }
+            return baseAddress;
         }
 
         protected void onProgressUpdate(Void... progress) {
@@ -243,8 +255,7 @@ public class MainActivity extends AppCompatActivity {
     final TrustManager[] trustManagers = new TrustManager[]{new X509TrustManager() {
         @Override
         public X509Certificate[] getAcceptedIssuers() {
-            X509Certificate[] x509Certificates = new X509Certificate[0];
-            return x509Certificates;
+            return new X509Certificate[0];
         }
 
         @Override
@@ -280,11 +291,7 @@ public class MainActivity extends AppCompatActivity {
         }, sdpConstraints);
     }
 
-    public void call() {
-        createRemotePeerConnection();
-    }
-
-    public void createRemotePeerConnection() {
+    public void createRemotePeerConnection(RemoteParticipant remoteParticipant) {
         final List<PeerConnection.IceServer> iceServers = new ArrayList<>();
         PeerConnection.IceServer iceServer = new PeerConnection.IceServer("stun:stun.l.google.com:19302");
         iceServers.add(iceServer);
@@ -293,7 +300,7 @@ public class MainActivity extends AppCompatActivity {
         sdpConstraints.mandatory.add(new MediaConstraints.KeyValuePair("offerToReceiveAudio", "true"));
         sdpConstraints.mandatory.add(new MediaConstraints.KeyValuePair("offerToReceiveVideo", "true"));
 
-        remotePeer = peerConnectionFactory.createPeerConnection(iceServers, sdpConstraints, new CustomPeerConnectionObserver("remotePeerCreation") {
+        PeerConnection remotePeer = peerConnectionFactory.createPeerConnection(iceServers, sdpConstraints, new CustomPeerConnectionObserver("remotePeerCreation", remoteParticipant) {
 
             @Override
             public void onIceCandidate(IceCandidate iceCandidate) {
@@ -302,29 +309,48 @@ public class MainActivity extends AppCompatActivity {
                 iceCandidateParams.put("sdpMid", iceCandidate.sdpMid);
                 iceCandidateParams.put("sdpMLineIndex", Integer.toString(iceCandidate.sdpMLineIndex));
                 iceCandidateParams.put("candidate", iceCandidate.sdp);
-                iceCandidateParams.put("endpointName", webSocketAdapter.getRemoteUserId());
+                iceCandidateParams.put("endpointName", getRemoteParticipant().getId());
                 webSocketAdapter.sendJson(webSocket, "onIceCandidate", iceCandidateParams);
             }
 
             @Override
             public void onAddStream(MediaStream mediaStream) {
                 super.onAddStream(mediaStream);
-                gotRemoteStream(mediaStream);
+                gotRemoteStream(mediaStream, getRemoteParticipant());
             }
         });
         MediaStream stream = peerConnectionFactory.createLocalMediaStream("105");
         stream.addTrack(localAudioTrack);
         stream.addTrack(localVideoTrack);
         remotePeer.addStream(stream);
+        remoteParticipant.setPeerConnection(remotePeer);
     }
 
 
-    public void hangup(View view) {
-        localPeer.close();
-        remotePeer.close();
-        localPeer = null;
-        remotePeer = null;
-        start_call.setEnabled(true);
+    public void hangup() {
+        if (webSocketAdapter != null && localPeer != null) {
+            webSocketAdapter.sendJson(webSocket, "leaveRoom",  new HashMap<String, String>());
+            localPeer.close();
+            localVideoTrack.removeRenderer(localRenderer);
+            localVideoView.clearImage();
+
+            Map<String, RemoteParticipant> participants = webSocketAdapter.getParticipants();
+            for (RemoteParticipant remoteParticipant : participants.values()) {
+                remoteParticipant.getPeerConnection().close();
+                views_container.removeView(remoteParticipant.getView());
+
+            }
+            localPeer = null;
+            start_finish_call.setText(getResources().getString(R.string.start_button));
+            socket_address.setEnabled(true);
+            socket_address.setFocusableInTouchMode(true);
+            session_name.setEnabled(true);
+            session_name.setFocusableInTouchMode(true);
+            participant_name.setEnabled(true);
+            participant_name.setFocusableInTouchMode(true);
+            main_participant.setText(null);
+            main_participant.setPadding(0, 0, 0, 0);
+        }
     }
 
     public VideoCapturer createVideoGrabber() {
@@ -358,20 +384,20 @@ public class MainActivity extends AppCompatActivity {
         return null;
     }
 
-    private void gotRemoteStream(final MediaStream stream) {
+    private void gotRemoteStream(MediaStream stream, final RemoteParticipant remoteParticipant) {
         final VideoTrack videoTrack = stream.videoTracks.getFirst();
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
                 try {
-                    remoteRenderer = new VideoRenderer(remoteVideoView);
-                    remoteVideoView.setVisibility(View.VISIBLE);
+                    remoteRenderer = new VideoRenderer(remoteParticipant.getVideoView());
+                    remoteParticipant.getVideoView().setVisibility(View.VISIBLE);
                     videoTrack.addRenderer(remoteRenderer);
                     MediaStream stream = peerConnectionFactory.createLocalMediaStream("105");
                     stream.addTrack(localAudioTrack);
                     stream.addTrack(localVideoTrack);
-                    remotePeer.removeStream(stream);
-                    remotePeer.addStream(stream);
+                    remoteParticipant.getPeerConnection().removeStream(stream);
+                    remoteParticipant.getPeerConnection().addStream(stream);
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
@@ -391,9 +417,9 @@ public class MainActivity extends AppCompatActivity {
         super.onBackPressed();
     }
 
-    public void setRemoteParticipantName(String name) {
-        remote_participant.setText(name);
-        remote_participant.setPadding(20, 3, 20, 3);
+    public void setRemoteParticipantName(String name, RemoteParticipant remoteParticipant) {
+        remoteParticipant.getParticipantNameText().setText(name);
+        remoteParticipant.getParticipantNameText().setPadding(20, 3, 20, 3);
     }
 
 }
