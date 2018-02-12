@@ -419,7 +419,4 @@ public class MainActivity extends AppCompatActivity {
             main_participant.setPadding(0, 0, 0, 0);
         }
     }
-    /*
-        TODO Dibujo de la estructura de clases y demás
-     */
 }
