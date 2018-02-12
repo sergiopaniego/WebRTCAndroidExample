@@ -407,13 +407,13 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onDestroy() {
-        webSocketAdapter.sendJson(webSocket, "closeSession", new HashMap<String, String>());
+        hangup();
         super.onDestroy();
     }
 
     @Override
     public void onBackPressed() {
-        webSocketAdapter.sendJson(webSocket, "closeSession", new HashMap<String, String>());
+        hangup();
         super.onBackPressed();
     }
 
