@@ -112,7 +112,6 @@ public class MainActivity extends AppCompatActivity {
             ActivityCompat.requestPermissions(this,
                     new String[]{Manifest.permission.RECORD_AUDIO},
                     MY_PERMISSIONS_REQUEST_RECORD_AUDIO);
-
         } else if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
                 != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this,
@@ -326,33 +325,6 @@ public class MainActivity extends AppCompatActivity {
         remoteParticipant.setPeerConnection(remotePeer);
     }
 
-
-    public void hangup() {
-        if (webSocketAdapter != null && localPeer != null) {
-            webSocketAdapter.sendJson(webSocket, "leaveRoom",  new HashMap<String, String>());
-            localPeer.close();
-            localVideoTrack.removeRenderer(localRenderer);
-            localVideoView.clearImage();
-
-            Map<String, RemoteParticipant> participants = webSocketAdapter.getParticipants();
-            for (RemoteParticipant remoteParticipant : participants.values()) {
-                remoteParticipant.getPeerConnection().close();
-                views_container.removeView(remoteParticipant.getView());
-
-            }
-            localPeer = null;
-            start_finish_call.setText(getResources().getString(R.string.start_button));
-            socket_address.setEnabled(true);
-            socket_address.setFocusableInTouchMode(true);
-            session_name.setEnabled(true);
-            session_name.setFocusableInTouchMode(true);
-            participant_name.setEnabled(true);
-            participant_name.setFocusableInTouchMode(true);
-            main_participant.setText(null);
-            main_participant.setPadding(0, 0, 0, 0);
-        }
-    }
-
     public VideoCapturer createVideoGrabber() {
         VideoCapturer videoCapturer;
         videoCapturer = createCameraGrabber(new Camera1Enumerator(false));
@@ -405,6 +377,11 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
+    public void setRemoteParticipantName(String name, RemoteParticipant remoteParticipant) {
+        remoteParticipant.getParticipantNameText().setText(name);
+        remoteParticipant.getParticipantNameText().setPadding(20, 3, 20, 3);
+    }
+
     @Override
     protected void onDestroy() {
         hangup();
@@ -417,9 +394,32 @@ public class MainActivity extends AppCompatActivity {
         super.onBackPressed();
     }
 
-    public void setRemoteParticipantName(String name, RemoteParticipant remoteParticipant) {
-        remoteParticipant.getParticipantNameText().setText(name);
-        remoteParticipant.getParticipantNameText().setPadding(20, 3, 20, 3);
-    }
+    public void hangup() {
+        if (webSocketAdapter != null && localPeer != null) {
+            webSocketAdapter.sendJson(webSocket, "leaveRoom",  new HashMap<String, String>());
+            localPeer.close();
+            localVideoTrack.removeRenderer(localRenderer);
+            localVideoView.clearImage();
 
+            Map<String, RemoteParticipant> participants = webSocketAdapter.getParticipants();
+            for (RemoteParticipant remoteParticipant : participants.values()) {
+                remoteParticipant.getPeerConnection().close();
+                views_container.removeView(remoteParticipant.getView());
+
+            }
+            localPeer = null;
+            start_finish_call.setText(getResources().getString(R.string.start_button));
+            socket_address.setEnabled(true);
+            socket_address.setFocusableInTouchMode(true);
+            session_name.setEnabled(true);
+            session_name.setFocusableInTouchMode(true);
+            participant_name.setEnabled(true);
+            participant_name.setFocusableInTouchMode(true);
+            main_participant.setText(null);
+            main_participant.setPadding(0, 0, 0, 0);
+        }
+    }
+    /*
+        TODO Dibujo de la estructura de clases y demás
+     */
 }
